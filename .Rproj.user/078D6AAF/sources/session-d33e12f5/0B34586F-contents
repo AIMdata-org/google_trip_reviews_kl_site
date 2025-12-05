@@ -1,0 +1,37 @@
+project:
+  type: website
+  output-dir: docs
+  render: 
+    - index.qmd
+
+website:
+  navbar:
+    title: "AIMdata"
+    logo: brand/logo_squares.png
+    logo-href: "www.aimdata.org"
+    left:
+        - href: index.md
+          text: Start of report
+    right:
+        - icon: github
+          href: "github.com/AIMdata-org"
+
+format:
+  html:
+    theme:
+      - cosmo
+      - brand
+    css: styles.css
+    toc: true
+    toc-location: left
+    toc-depth: 4
+    code-fold: true
+    code-summary: "Show code"
+    page-layout: full
+    self-contained: true
+
+editor: source
+
+brand: brand/_brand.yml
+
+

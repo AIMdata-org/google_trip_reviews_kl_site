@@ -1,0 +1,4 @@
+"0","google_reviews <- read_csv(""./data/GoogleReview_data_cleaned.csv"") |> clean_names()"
+"0",""
+"0","trip_reviews <- read_csv(""./data/TripAdvisor_data_cleaned.csv"") |> clean_names() |> "
+"0","  mutate(review = str_replace_all(review, ""dim sum|Dim Sum|Dim sum"", ""dimsum""))"

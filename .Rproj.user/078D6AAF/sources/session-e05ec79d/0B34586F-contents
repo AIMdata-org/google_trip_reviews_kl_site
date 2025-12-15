@@ -26,6 +26,8 @@ format:
     toc-location: left
     toc-depth: 4
     code-fold: true
+    code-tools: true
+    code-overflow: wrap
     code-summary: "Show code"
     page-layout: full
     self-contained: true

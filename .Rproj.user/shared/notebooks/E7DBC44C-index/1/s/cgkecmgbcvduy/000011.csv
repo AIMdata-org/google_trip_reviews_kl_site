@@ -1,0 +1,11 @@
+"0","google_reviews |> 
+  names()
+"
+"1","[1]"
+"1"," ""author""    "
+"1"," ""rating""    "
+"1"," ""review""    "
+"1"," ""restaurant"""
+"1"," ""location""  "
+"1","
+"

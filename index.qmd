@@ -3,7 +3,7 @@ title: "Google restaurant reviews in Kuala Lumpur, Petaling Jaya and Shah Alam, 
 subtitle: "Part one"
 author: "Sean Ng"
 organization: "AIMdata"
-date-modified: "12 December 2025"
+date-modified: "26 December 2025"
 execute: 
   echo: false
 ---
@@ -51,13 +51,15 @@ trip_reviews <- read_csv("./data/TripAdvisor_data_cleaned.csv") |> clean_names()
 
 ## Introduction and overview
 
-A common refrain for this postmodern age is that online reviews are useless.
+A common refrain for this postmodern age is that online reviews are useless. 
 
-Today, we're looking at two different sets of scraped data to see to what extent that is true. Restaurant reviews from Google and Trip Advisor in Malaysia were scraped by [Ng Choon Khon](https://www.kaggle.com/datasets/choonkhonng/malaysia-restaurant-review-datasets) using the Selenium library. 
+Today, we're looking at two different sets of scraped restaurant reviews to determine to what extent that is true. Restaurant reviews from Google and Trip Advisor in Malaysia were scraped by [Ng Choon Khon](https://www.kaggle.com/datasets/choonkhonng/malaysia-restaurant-review-datasets) using the Selenium library. 
 
 Below, we've plotted out the restaurants found in both datasets according to the number of reviews and their mean rating. Immediately, we note an unnatural pattern in the Google dataset: Google limits Selenium to only being able to scrape around 300 reviews per restaurant, at most.
 
 Whilst this impacts and limits the dataset, we should still make the best use of it we can: Google's official API only allows five reviews to be extracted per restaurant because data freely given to the world must be paywalled and sold back to you.
+
+This analysis is ultimately meant to better understanding of Google's and Trip Advisor's review platforms from a consumer perspective, in order to choose more satisfactory restaurants. 
 
 
 <br>
@@ -99,17 +101,23 @@ trip_reviews |>
 
 <br>
 
-Google reviews are sorted by default by "relevance", so it is only possible to say that this was determined by a combination of recency, quality (word count, images) and whether or not a review was regarded by the community as helpful. 
+### Limitations
+
 
 ```{r malay-list}
 # Maybe someone with a better grasp of Malay can improve on this, 
+# without getting too many false positives
 # But it works pretty well as long as the not_malay_list is run as well
 # The number for Trip Advisor is likely lower still, since there were still some false positives
+# Remember that 
 malay_list <- " yang|sedap|makanan|Makanan| saya| Saya|dulu|semua|kali|sdap|sangat|Sangat|lauk|harga|tapi|terbaik|berbaloi| dgn|siap|tidak|bole|boleh| lain|cantik"
 
 # Not really that surprising that "kalian" is almost always just a mispelling of "kailan", 
 # But I'll leave it out as it could make too many false negatives
 not_malay_list <- "yangzhou|yang zhou|Yang zhou|wayang|Wayang|tapioca|Tapioca|Gansayam|Rasa Saya|ying yang|yin yang|goyang|fried rice|chargable|hargao"
+
+# Realising now that there is a malaytextr package
+# Remember to fix this
 
 malay_pc_summary <- rbind(google_reviews |>
   filter(!is.na(review)) |> 
@@ -137,17 +145,15 @@ trip_reviews |>
 
 Let's review the limitations once more, before we look into these datasets: 
 
-* Google's dataset is not a representative sample of reviews, as many restaurants only have the first 300 most "relevant" reviews. Google reviews, in general, are less policed, with numerous instances of  [scams]((https://www.asiaone.com/lifestyle/restaurant-ibid-woo-wai-leong-police-reviews-scam)) and fake reviews.  
+* What Google's dataset is representative of cannot be readily explained. Many restaurants only have their first 300 most "relevant" reviews. Google determines "relevance" by using a combination of recency, quality (word count, images) and whether or not a review was regarded by the community as helpful. 
 
-* Both Google maps and Trip Advisor are principally English language platforms when it isn't spoken by the majority of the population. Upon a cursory inspection, there are very few reviews in Malay or with Malay words in Google (`r malay_pc_summary |> filter(source == "Google") |> pull(malay_pc)`%) and even less in Trip Advisor (`r malay_pc_summary |> filter(source == "TripAdvisor") |> pull(malay_pc)`%). This is extremely different from even urban demographics where there are proportionally more minorities, though this skew is more understandable on Trip Advisor than on Google. 
+* Both Google maps and Trip Advisor are principally English language platforms when the language isn't regularly used by the majority of the population. Upon a cursory inspection, there are very few reviews in Malay in Google (`r malay_pc_summary |> filter(source == "Google") |> pull(malay_pc)`%) and even less in Trip Advisor (`r malay_pc_summary |> filter(source == "TripAdvisor") |> pull(malay_pc)`%). This is extremely different from even urban demographics (where there are proportionally more minorities, and consequently, English speakers). This bias is more understandable on Trip Advisor than it is on Google. 
+* The price range is missing from this dataset. This is unfortunate because price is one of the main topics mentioned in reviews. If I were to rescrape the data, I would definitely prioritise getting the price range. 
 
-* The price range is missing from this data. This is unfortunate because price is one of the main topics mentioned in reviews. 
+* These reviews were extracted three years ago: some of these restaurants have closed, or have changed how they operate.  
 
-* These reviews were extracted three years ago: some of these restaurants have closed. Before we re-scrape the data and update these datasets, let's see what is of most in the existing data (which was used to make a sentiment analysis app). 
+* Whilst reviews themselves are largely meant to informational, expressive or cautionary, review platforms are mired in layers of obfuscation, gamification and marketing. Additionally, Google's reviews are generally less policed than Trip Advisor's, with notable instances of [scams]((https://www.asiaone.com/lifestyle/restaurant-ibid-woo-wai-leong-police-reviews-scam)) and bribed reviews. Additionally, reviews are further affected by prevailing social mores (we will discuss below the skew towards five stars). 
 
-The purpose of this series of analyses is to better understand Google and Trip Advisor's rating systems in order to better interpret reviews and choose better restaurants. 
-
-Because whilst reviews themselves were meant to be informational, expressive or cautionary, the platforms are mired in layers of obfuscation, gamification and marketing; additionally, all reviews are affected by prevailing social mores (we will discuss below the skew towards five stars). This leads me to question that despite all the data we have, how much about restaurant reviews will be actually quantifiable. 
 
 <br><br><br>
 
@@ -252,6 +258,23 @@ reviews_cuisine_cleaning <- function(tbl) {
     filter(restaurant %out% c("Jalan Alor", "Sham's Cooked With Love", "Hawker Stalls in Chinatown",
                               "Feast Village Starhill Gallery", "ICC Pudu", "Imbi Market", 
                               "Taste of Asia", "Thirty8 Fashion", "Happy Mansion")) |> 
+    # Location cleaning
+    mutate(location = ifelse(restaurant %in% 
+                               c("Nizza Restaurant @ Sofitel Kuala Lumpur Damansara",
+                                 "Sri Nirwana Maju Restaurant - Bangsar",
+                                 "Hornbill Restaurant & Cafe", 
+                                 "Malai Thai Cuisine @ Cormar Suites",
+                                 "Qureshi",
+                                 "Aliyaa Island Restaurant & Bar",
+                                 "Skillet KL",
+                                 "Geographer cafe Kuala Lumpur",
+                                 "Gastro Sentral, Le Méridien Kuala Lumpur",
+                                 "Horizon Grill @ Banyan Tree Kuala Lumpur",
+                                 "Chamber’s Grill",
+                                 "Mercat Barcelona Gastrobar (1MontKiara)",
+                                 "Chynna"), 
+                             "KL", 
+                             location)) |> 
     # Some cleaning 
     mutate(restaurant = str_replace(restaurant, "Birch", "Huckleberry")) |> 
     mutate(restaurant = str_replace_all(restaurant, "Passage thru'", "Passage Thru"),
@@ -324,7 +347,7 @@ reviews_cuisine_cleaning <- function(tbl) {
         ) ~ "Malay",
         str_detect(
           restaurant,
-          "Nonya|Baba|Mum's Place|Madam Kwan|Chuup|Old China Cafe|Nyonya|Little Penang|Oriental Cravings|Papparich|Uncle Don|Muar Restaurant|Kumi|Peranakan|1919 Restaurant"
+          "Nonya|Baba|Mum's Place|Madam Kwan|Chuup|Old China Cafe|Nyonya|Little Penang|Oriental Cravings|Papparich|Uncle Don|Muar Restaurant|Kumi|Peranakan|1919 Restaurant|Penang"
         ) ~ "Malaysian",
         str_detect(
           restaurant,
@@ -420,21 +443,21 @@ Determining the cuisine of a restaurant was mostly fairly obvious, and the categ
 
 Let's start first with an overview of both datasets, now with cuisines included. From the plot below, we see that: 
 
-* South Asian, Chinese, Casual Western, Japanese and Bars are the most commonly-reviewed restaurants in the Klang Valley. These are not the most commonly-visited restaurants.  
+* South Asian, Chinese, Casual Western, Japanese and Bars are the most commonly-reviewed restaurants in the Klang Valley. These are not the most common nor the most commonly-visited restaurants (hawker stalls).  
 
 * Chinese, Casual Western, Malaysian and Thai are the lowest-rated cuisines. 
 
 * Fusion, Other Upmarket (experiential dining or unspecified "international" cuisine) and bars have the highest ratings, with 60% or more of all reviews being five stars. 
 
-* Trip Advisor and Google reviewers differ the most on their opinions of Levantine, Casual Western and Japanese restaurants. 
+* Trip Advisor and Google reviewers differ the most on their opinions of Levantine, Casual Western and Japanese restaurants. With regards to Levantine food, in my opinion at least, it might be a case of "good for Malaysia", but not necessarily good compared to outside. 
 
-* The x-axes on the plots below show the percentage of reviews that are five stars by cuisine. This actually provides much more differentiation than just the mean rating, as we will discuss in the next section.
+* The x-axes on the plots below show the percentage of reviews that are five stars by cuisine. This actually provides much more differentiation than just the mean rating (which is reflected in the colours below). As we will discuss in the next section, ratings are heavily skewed towards five stars. 
 
 
 <br>
 
 
-```{r fig.width=7}
+```{r cuisine-comparison-barchart, fig.width=7}
 
 google_kl_cuisine |> 
   mutate(count = 1) |> 
@@ -487,11 +510,11 @@ google_kl_cuisine |>
 
 With reference to the histograms below, that ratings are skewed towards the higher end: the mean rating of restaurants on Google is **`r summary_stats |> filter(source == "Google") |> pull(mean_rating) |> round(2)`** and the mean rating on Trip Advisor is **`r summary_stats |> filter(source == "Trip Advisor") |> pull(mean_rating) |> round(2)`**. The median and mode for both datasets is **5**.  
 
-It really could be said that the default review rating is five stars. This means that restaurant reviews on these platforms are very lax. It is hard for me to believe that half of all reviews were about a truly exceptional dining experience: **`r round(google_kl_cuisine |> filter(rating == 5) |> nrow() / nrow(google_kl_cuisine) * 100, 2)`%** of all ratings in the Google dataset for the Klang Valley are five stars; in Trip Advisor, it was **`r round(trip_kl_cuisine |> filter(rating == 5) |> nrow() / nrow(trip_kl_cuisine) * 100, 2)`%**. 
+It really could be said that the default review rating is five stars. This means that restaurant reviews on these platforms are quite lenient. It is hard for me to believe that half of all reviews were about truly exceptional dining experiences: **`r round(google_kl_cuisine |> filter(rating == 5) |> nrow() / nrow(google_kl_cuisine) * 100, 2)`%** of all ratings in the Google dataset for the Klang Valley are five stars; in Trip Advisor, it was **`r round(trip_kl_cuisine |> filter(rating == 5) |> nrow() / nrow(trip_kl_cuisine) * 100, 2)`%**. 
 
 <br>
 
-```{r}
+```{r compare-mean-ratings-histogram}
 compare_histograms <- function(tbl){
   tbl |> 
     mutate(count = 1) |> 
@@ -522,13 +545,7 @@ trip_kl_cuisine |>
 
 <br>
 
-To take an immediate point of action, if a restaurant that you would like to try has a review summary chart more heavily weighted to the bottom than the charts above, it 
-
-Given that reviews are limited to a one-to-five scale, there is not very much differentiation amongst how restaurants are rated. In the scatterplots below, we note restaurants that almost all restaurants mostly receive five stars (blue) or four stars (green). This means that neither Google nor Trip Advisor ratings are particularly useful at distinguishing between restaurants.
-
-It might even be more useful to just have a ratio of five- and four-star reviews vs one-, two- and three-star reviews -- this could be 
-
-The number of total reviews is correlated with mean rating. 
+Reviews are limited (in every sense of the word) to a one-to-five scale. In the scatterplots below, we note that **almost all restaurants mostly receive five stars (blue) or four stars (green)**. This does seem to indicate that restaurant ratings are not very good at distinguishing between restaurants. 
 
 
 <br>
@@ -600,20 +617,20 @@ ggsave("./plots/cuisine_comparison_trip_google.png", height = 7, width = 11, uni
 
 <br><br><br>
 
-### In both Google and Trip
+### Restaurants in both Google and Trip
 
+Let's investigate a bit more by looking at restaurants that appear in both the Google and Trip datasets. 
 
-Just having these two sets of reviews to examine, 
+Below, we have plotted restaurants based on their mean ratings on Google and Trip Advisor. The globalised nature (with such heavy representation from casual western restaurants) of the Malaysian food scene seems to result in Google (which is used more heavily by locals) and Trip Advisor (which is used more often by travellers) agreeing more than not. 
 
-Are reviews useful? The commonality of five-star reviews indicate that the mean rating is more likely an indicator of expectations being met rather than any true excellence. 
+Looking at the top-right quadrant, we see that the restaurants rated most highly by Google and Trip Advisor are mostly fine dining: Sushi Hibiki is a high-end omakase restaurant and seems to be regarded as the best meal in the Klang Valley; DC Restaurant has one Michelin star. Sausage Kl Cafe and Grill, however, was a restaurant specialising in English breakfast. And Antipodean is a cafe that is, to me, a solid 3/5; but it still has around the same Trip Advisor rating as Dewakan, which has two Michelin stars. 
 
+We'll look into this more in next week's section of the report, but it appears that the commonality of five-star reviews indicates that the mean rating might be more an indicator of expectations being met, than any true excellence. 
 
-
-These differences probably come down to the reviewers on Google and Trip Advisor and their respective purposes. Google reviewers are often locals or general consumers, whilst Trip Advisor reviewers tend to be travellers who have to provide more structured, specific reviews, leading to less casual reviews as there is a minimum word count required. 
 
 <br>
 
-```{r restaurant-fuzzy-match}
+```{r restaurant-fuzzy-match, warning=FALSE}
 
 restaurant_fuzzy_match <- stringdist_join(
   trip_reviews |> 
@@ -694,7 +711,11 @@ combined_google_trip <- trip_kl_cuisine |>
 
 
 
-```{r common-restaurants, fig.height=8, fig.width=10}
+```{r common-restaurants, fig.height=8, fig.width=10, eval=FALSE}
+
+# Putting in the finished plot, instead of evaluating again
+# so that I can embed a link to the full-size plot in the image
+
 combined_google_trip |> 
   group_by(restaurant, source) |> 
   summarise(rating = mean(rating), 
@@ -734,14 +755,28 @@ combined_google_trip |>
         legend.text = element_text(size = 6), 
         legend.key.size = unit(0.3, "lines"))
 
-ggsave("./plots/restaurant_comparison_trip_google.png", height = 11, width = 11, units = "in")  
+ggsave("./plots/restaurant_comparison_trip_google.png", height = 9, width = 11, units = "in")  
 ```
+
+[![](./plots/restaurant_comparison_trip_google.png)](https://github.com/AIMdata-org/google_trip_reviews_kl_site/raw/main/plots/restaurant_comparison_trip_google.png)
 
 <br>
 
-Google and TripAdvisor users seem to agree more than disagree. 
+What becomes clearer when we re-plot the restaurants, this time using percentage of ratings that are five stars, the distinction between fine dining and more casual restaurants is much clearer. Fine dining restaurants tend to have above 50% of their reviews being five stars in both Trip and Google.  
 
-```{r new-rating-common-restaurants, fig.height=8, fig.width=10}
+The restaurants in the "fine dining" group have higher floors and ceilings, when it comes to the percentage of ratings that are five stars. This is why lacking price range in this dataset is such a shame, as it seems like these two groups should be graded on their own curves.
+
+We also see how Google reviewers are stricter (less lenient), with restaurants struggling to get above 70% five-star reviews. Though, as mentioned this isn't any particular mark of quality. 
+
+Also to be investigated further is to what extent restaurants in the "fine dining" achieve their higher scores due to better service and environments, as opposed to food quality. 
+
+
+<br>
+
+```{r new-rating-common-restaurants, fig.height=8, fig.width=10, warning=FALSE, eval=FALSE}
+
+# Putting in the finished plot, instead of evaluating again
+# so that I can embed a link to the full-size plot in the image
 
 combined_google_trip |> 
   mutate(new_rating = ifelse(rating %in% c(5), 1, 0)) |> 
@@ -770,15 +805,18 @@ combined_google_trip |>
   scale_colour_viridis_d(option = "turbo") +
   ggrepel::geom_text_repel(aes(label = restaurant), 
                            size = 1.2) + 
-  xlim(0.2, .9) +
-  ylim(0.2, .9) +
-  scale_x_continuous(labels = percent, breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + 
-  scale_y_continuous(labels = percent, breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) +
+  scale_x_continuous(labels = percent, breaks = c(0, 0.2, 0.3, 0.4, 0.5, 
+                                                  0.6, 0.7, 0.8, 0.9, 1), 
+                     limits = c(0.2, .87)) + 
+  scale_y_continuous(labels = percent, breaks = c(0, 0.2, 0.3, 0.4, 0.5, 
+                                                  0.6, 0.7, 0.8, 0.9, 1), 
+                     limits = c(0.2, .94)) +
   scale_size_continuous(breaks = c(100, 500, 1000, 2000)) +
   labs(title = "Comparison between Google and TripAdvisor using percentage of 5-star reviews", 
        subtitle = "Size indicates number of reviews.", 
        y = "% of 5-star ratings, Trip Advisor", 
-       x = "% of 5-star ratings, Google", 
+       x = "% of 5-star ratings, Google",
+       caption = "Sources: Google; TripAdvisor; Ng Choon Khon.",
        colour = "Cuisine", 
        size = "Review count") + 
   # guides(colour = guide_legend(override.aes = list(size = .7))) +
@@ -789,77 +827,165 @@ combined_google_trip |>
 ggsave("./plots/restaurant_comparison_new_ratings2.png", height = 9, width = 11, units = "in")  
 ```
 
-<br>
+[![](./plots/restaurant_comparison_new_ratings2.png)](https://github.com/AIMdata-org/google_trip_reviews_kl_site/raw/main/plots/restaurant_comparison_new_ratings2.png)
 
-Here we have replotted these restaurants. Behind the data is LOESS curve, which weights closer points more heavily; this helps in the detection of clusters.  
-
-A five-star rating indicates that expectations have been met. 
-
-Perhaps this combination of Google and Trip Advisor
-
-Five-star
-
-Nadodi has a michelin star 
-
-It's possible that reviews are useless. 
-
-Good service and environment can prevent a one-star review. 
-Humans are crazy and feel debts viscerally. 
-Separate food from service and waiters? But restaurants don't do that. 
-Dining is an experience, and all aspects of the experience are vital. 
-
-Is it fair to say that locals and more casual reviewers favour localised, 
-
-Some deserve their four stars
-Specialities can get you really far
-
-This is one of those subjects where we all have experience. And that experience is applicable. 
-
-For me, I see that the more localised, longstanding levantine (Bedouin and Istanbul) restaurants are much more popular on Google (with locals), rather than on Trip Advisor with many more expats and travellers. 
-
-
-Maybe there should be separate scores for the food and the service? 
-How do 
-
+<br><br><br>
 
 ## Conclusions: Part one
 
-Let's review what we've learnt from the datasets: 
+Let's review what we've learnt so far; though we probably already knew some of these things instinctually, it is still nice to get confirmation: 
 
-* Reviews skew very heavily towards five stars. Roughly half of all reviews give five stars. This means that Google Maps and TripAdvisor should be used to decide where not to eat, as opposed as where to eat since five stars means a restaurant could mean anything from "met expectations" to "truly exceptional". Though much less numerous, one-, two- and three-starred reviews are much more informative than reading five star reviews. I will try sorting restaurant reviews by the lowest first, so I can avoid places that could be very disappointing. 
+* Reviews skew very heavily towards five stars. More than half of all reviews give five stars. This means that Google Maps and TripAdvisor are not useful in determining where one should eat since five stars could mean anything from "met expectations" to "truly exceptional". 
 
-If you, like me, are unsatisfied with the lack of critique, it would be best to sort reviews by lowest first. 
+* Re-sorting (lowest, most recent) and filtering reviews will likely provide more informative reviews on Google. There is no real reason to accept their default sorting by "relevance" as you can pay for visibility, pay for reviews, and pay to remove reviews.
 
-* In fact, re-sorting your data will likely provide better results. Since you can also pay Google for visibility, looking at the tops results provides a very distorted view of the area in question. It is better to look through data without 
+* However, this means that we're still engaging with reviews as individual data points. Neither Google nor Trip Advisor provide us any other tools to sift through the data. Even looking at the review summary will not always be helpful, since having five-star reviews be less than 50% of your total is more an indicator that the restaurant is not fine dining, than any other indicator of quality. 
 
-In spite of all this, I still haven't learnt anything that I instinctually did not know. In my day-to-day life, when engaging with online reviews, I'm still forced to engage with reviews individually, apart from the summary chart 
+* Outside of the home, hawker centres and coffee shops are places where food is most commonly consumed. Yet these businesses are not reviewed with anywhere the same frequency as the casual western eateries or chinese restaurants/*dai chows*. It is difficult (by design?) to mark individual hawkers since they operate from within the premises of another business. Additionally, hawkers are much less likely to engage with Google or Trip Advisor to curate or market their online presence, leading to these platforms being blind to the needs of hawkers and continue to cater towards restaurants (who might actual have marketing budgets). One unfavourable interpretation of this is that this is a civilisation-wide upsell and meant to increase the visibility of more expensive meal options. 
 
-That the places where food is most commonly consumed, outside the home.
+Rare is the occasion that I, whilst searching on Google or Trip Advisor, find a truly exceptional meal. My most memorable experiences have mostly been the result of personal recommendations or curated lists from trusted reviewers. I'm starting to think that the main purpose of review platforms is marketing. 
+<br><br><br>
 
-Outside of the home, hawker centres and coffee shops are places where food is most commonly consumed. Yet these businesses are not reviewed with anywhere the same frequency as the casual western eateries or chinese restaurants/*dai chows*. Food we consume every day is not subject to the same expectations as fine dining. But even more casual dining options warrant reviews. 
+## Appendices
 
-Or, the system could be skewed against hawkers. It is difficult to mark individual hawkers since they operate from within the premises of another business. Additionally, hawkers are much less likely to engage with Google or Trip Advisor to curate or market their online presence, leading to these platforms being blind to the needs of hawkers and continue to cater towards restaurants. Restaurants do spend on marketing (i.e. paying for visibility on Google Maps) 
+### Notes on cuisine
 
-The expectations around any restaurant, 
+With reference to the cleaning script for determining the cuisine of a restaurant, there are few things to bear in mind in trying to update or improve it. 
 
-## Reference tables
+I have made a distinction between Malay and Malaysian cuisines. This difference can be boiled down to Chef Wan (Malay) vs. Madan Kwan (Malaysian). A Hainan Kopitiam would be considered as Malaysian. 
 
-```{r}
+A few more points for the ordering of arguments within the `case_when` statement: 
+
+I have considered South Asian buffet restaurants to be South Asian restaurants. I And I do not consider hotel buffets to be a type of fusion restaurant, despite all the types of food they might serve. Make sure the list for grills is before that for bars (because of "barbecue"). 
+
+"Other Upmarket" is mostly expensive experiential dining, with some tourist traps. In this category are *Dining in the Dark* and *Plane in KL*. I've also included Turkish food under the "Levantine" umbrella. 
+
+"Fusion" restaurants are explicitly fusion restaurants, with the word "fusion" in their names or showing up in a proportion of reviews. The same is true for buffet restaurants (which were numerous enough in the Trip Advisor dataset to warrant their own category). 
+
+The Google and Trip Advisor datasets for the Klang Valley have a fairly comparable number of reviews: `r google_kl_cuisine |> nrow() |> format(big.mark = ",")` in Google and `r trip_kl_cuisine |> nrow() |> format(big.mark = ",")` in Trip Advisor. 
+
+<br>
+
+```{r reviews-by-cuisine-}
+cuisine_intermediate <- trip_kl_cuisine |> 
+  count(cuisine, sort = TRUE, name = "trip_reviews") |> 
+  left_join(
+    google_kl_cuisine |> 
+      count(cuisine, sort = TRUE, name = "google_reviews")
+  ) |> 
+  mutate(
+    total_reviews = trip_reviews + google_reviews
+  ) |> 
+  arrange(desc(total_reviews)) 
+
+cuisine_intermediate |> 
+  pivot_longer(cols = c(trip_reviews, google_reviews, total_reviews), 
+               names_to = "source", 
+               values_to = "count") |> 
+  mutate(source = str_replace_all(source, "_reviews", ""), 
+         source = str_to_title(source),
+         source = str_replace_all(source, "Trip", "Trip Advisor")) |> 
+  mutate(source = factor(source, levels = c("Google",
+                                            "Trip Advisor",
+                                            "Total"))) |> 
+  ggplot(aes(x = count, y = fct_rev(fct_relevel(cuisine, cuisine_intermediate |> pull(cuisine))))) + 
+  geom_col(aes(fill = cuisine)) +
+  geom_text(aes(label = comma(count)), 
+            position = position_dodge(width = .9), 
+            hjust = "inward", 
+            colour = "grey20", 
+            size = 3) +
+  facet_wrap(~source, scales = "free_x") + 
+  scale_x_continuous(labels = number_format(scale = 1/1000, suffix = "k", 
+                                            accuracy = 1)) + 
+  scale_fill_viridis_d(option = "turbo") + 
+  theme(legend.title = element_text(size = 8), 
+        legend.text = element_text(size = 8), 
+        legend.key.size = unit(0.3, "lines"), 
+        strip.background = element_rect(fill = "black"), 
+        plot.caption = element_text(hjust = .5)) + 
+  labs(x = "Number of reviews", 
+       y = "", 
+       fill = "Cuisine",
+       title = "Number of reviews by cuisine", 
+       subtitle = "Restaurants in the Klang Valley", 
+       caption = "Sources: Ng Choon Khon; Google; TripAdvisor.")
+
+  
+```
+Trip Advisor reviewers tended to review far more bars, buffets (including hotel buffets), cafes, fusion, Japanese and unspecified upmarket restaurants than Google reviewers. This is commonsensical since Trip Advisor tends to have travellers using it.
+
+<br><br><br>
+
+### Reference tables
+
+Below are reference tables for the restaurants used in this analysis. 
+
+#### Google: restaurants in the Klang Valley
+
+Sorted in descending order, according to mean rating. 
+
+```{r dt-google}
 google_kl_cuisine |> 
   select(restaurant, cuisine, rating, location) |> 
   group_by(restaurant, cuisine, location) |> 
-  summarise(mean_rating = round(mean(rating), 2), 
-            reviews = n())
-  glimpse()
+  summarise(mean_rating = round(mean(rating), 2),
+            median_rating = median(rating), 
+            reviews = n(), .groups = "drop") |> 
+  filter(reviews >= 20) |> 
+  relocate(location, .after = reviews) |> 
+  rename(`mean rating` = mean_rating, 
+         `median rating` = median_rating) |> 
+  arrange(desc(`mean rating`)) |> 
+  datatable(filter = list(position = "top", clear = "FALSE"), 
+            options = list(pageLength = 10, scrollX = TRUE), 
+            caption = htmltools::tags$caption(
+              style = 
+              "caption-side: top;
+              text-align: center;
+              color: black;
+              font-size: 120% ;",
+              "Google: restaurants in the Klang Valley with more than 20 reviews"
+            )) |> 
+  formatStyle(0, target = "row", lineHeight = "85%", fontSize = "80%")
 
+
+```
+
+<br><br><br>
+
+#### Trip Advisor: restaurants in the Klang Valley
+
+Sorted in descending order, according to mean rating. 
+
+```{r dt-trip}
 trip_kl_cuisine |> 
   select(restaurant, cuisine, rating, location) |> 
   group_by(restaurant, cuisine, location) |> 
-  summarise(mean_rating = round(mean(rating), 2), 
-            reviews = n())
+  summarise(mean_rating = round(mean(rating), 2),
+            median_rating = median(rating), 
+            reviews = n(), .groups = "drop") |> 
+  filter(reviews >= 20) |> 
+  relocate(location, .after = reviews) |> 
+  rename(`mean rating` = mean_rating, 
+         `median rating` = median_rating) |> 
+  arrange(desc(`mean rating`)) |> 
+  datatable(filter = list(position = "top", clear = "FALSE"), 
+            options = list(pageLength = 10, scrollX = TRUE), 
+            caption = htmltools::tags$caption(
+              style = 
+              "caption-side: top;
+              text-align: center;
+              color: black;
+              font-size: 110% ;",
+              "Trip Advisor: restaurants in the Klang Valley with more than 20 reviews"
+            )) |> 
+  formatStyle(0, target = "row", lineHeight = "85%", fontSize = "80%")
+
+
+
+
 ```
-
-
 
 
 

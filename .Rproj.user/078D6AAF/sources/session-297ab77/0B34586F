@@ -3,7 +3,7 @@
     "path": "~/R/google_trip_reviews_kl_site/_quarto.yml",
     "project_path": "_quarto.yml",
     "type": "yaml",
-    "hash": "0",
+    "hash": "3753553928",
     "contents": "",
     "dirty": false,
     "created": 1764663417071.0,
@@ -12,15 +12,15 @@
     "properties": {
         "source_window_id": "",
         "Source": "Source",
-        "cursorPosition": "38,0",
+        "cursorPosition": "27,20",
         "scrollLine": "0"
     },
     "folds": "",
-    "lastKnownWriteTime": 1765872061,
+    "lastKnownWriteTime": 1766767773,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1765872061238,
+    "last_content_update": 1766767773368,
     "read_only": false,
     "read_only_alternatives": []
 }

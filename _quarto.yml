@@ -25,12 +25,14 @@ format:
     toc: true
     toc-location: left
     toc-depth: 4
+    toc-expand: true
     code-fold: true
     code-tools: true
     code-overflow: wrap
     code-summary: "Show code"
     page-layout: full
-    self-contained: true
+    self-contained-math: true
+    embed-resources: true
 
 editor: source
 

@@ -841,9 +841,10 @@ Let's review what we've learnt so far; though we probably already knew some of t
 
 * However, this means that we're still engaging with reviews as individual data points. Neither Google nor Trip Advisor provide us any other tools to sift through the data. Even looking at the review summary will not always be helpful, since having five-star reviews be less than 50% of your total is more an indicator that the restaurant is not fine dining, than any other indicator of quality. 
 
-* Outside of the home, hawker centres and coffee shops are places where food is most commonly consumed. Yet these businesses are not reviewed with anywhere the same frequency as the casual western eateries or chinese restaurants/*dai chows*. It is difficult (by design?) to mark individual hawkers since they operate from within the premises of another business. Additionally, hawkers are much less likely to engage with Google or Trip Advisor to curate or market their online presence, leading to these platforms being blind to the needs of hawkers and continue to cater towards restaurants (who might actual have marketing budgets). One unfavourable interpretation of this is that this is a civilisation-wide upsell and meant to increase the visibility of more expensive meal options. 
+* Outside of the home, hawker centres and coffee shops are places where food is most commonly consumed. Yet these businesses are not reviewed with anywhere the same frequency as the casual western eateries or chinese restaurants/*dai chows*. It is difficult (by design?) to mark individual hawkers since they operate from within the premises of another business. Additionally, hawkers are much less likely to engage with Google or Trip Advisor to curate or market their online presence, leading to these platforms being blind to the needs of hawkers and continue to cater towards restaurants (who might actual have marketing budgets).
 
 Rare is the occasion that I, whilst searching on Google or Trip Advisor, find a truly exceptional meal. My most memorable experiences have mostly been the result of personal recommendations or curated lists from trusted reviewers. I'm starting to think that the main purpose of review platforms is marketing. 
+
 <br><br><br>
 
 ## Appendices

@@ -551,7 +551,7 @@ Reviews are limited (in every sense of the word) to a one-to-five scale. In the 
 <br>
 
 
-```{r restaurant-comparison-trip-google, fig.width=8, warning=FALSE, message=FALSE}
+```{r restaurant-comparison-trip-google, warning=FALSE, message=FALSE}
 
 compare_google_trip <- function(tbl){
   
@@ -758,7 +758,7 @@ combined_google_trip |>
 ggsave("./plots/restaurant_comparison_trip_google.png", height = 9, width = 11, units = "in")  
 ```
 
-[![](./plots/restaurant_comparison_trip_google.png)](https://github.com/AIMdata-org/google_trip_reviews_kl_site/raw/main/plots/restaurant_comparison_trip_google.png)
+[![Click inmage for full size](./plots/restaurant_comparison_trip_google.png)](https://github.com/AIMdata-org/google_trip_reviews_kl_site/raw/main/plots/restaurant_comparison_trip_google.png)
 
 <br>
 
@@ -827,7 +827,7 @@ combined_google_trip |>
 ggsave("./plots/restaurant_comparison_new_ratings2.png", height = 9, width = 11, units = "in")  
 ```
 
-[![](./plots/restaurant_comparison_new_ratings2.png)](https://github.com/AIMdata-org/google_trip_reviews_kl_site/raw/main/plots/restaurant_comparison_new_ratings2.png)
+[![Click image for full size](./plots/restaurant_comparison_new_ratings2.png)](https://github.com/AIMdata-org/google_trip_reviews_kl_site/raw/main/plots/restaurant_comparison_new_ratings2.png)
 
 <br><br><br>
 
@@ -867,7 +867,7 @@ The Google and Trip Advisor datasets for the Klang Valley have a fairly comparab
 
 <br>
 
-```{r reviews-by-cuisine-}
+```{r reviews-by-cuisine, fig.height=6.5}
 cuisine_intermediate <- trip_kl_cuisine |> 
   count(cuisine, sort = TRUE, name = "trip_reviews") |> 
   left_join(

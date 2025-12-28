@@ -45,8 +45,6 @@ trip_kl_cuisine <- read_csv("./data/trip_kl_cuisine.csv")
 
 google_kl_cuisine <- read_csv("./data/google_kl_cuisine.csv")
 
-
-
 ```
 
 ```{r words}
@@ -57,10 +55,6 @@ google_rating_words <- google_kl_cuisine |>
   # mutate(word = SnowballC::wordStem(word, language = "porter")) |> 
   anti_join(stop_words, by = "word") |>
   add_count(word) 
-
-
-  bind_tf_idf(rating, word, n) |> 
-  tidylo::bind_log_odds(rating, word, n)
 
 trip_rating_words <- trip_kl_cuisine |> 
   select(rowid, review, rating) |> 
@@ -76,19 +70,132 @@ trip_rating_words <- trip_kl_cuisine |>
 Sentiment analysis to see if the exceptional five-star reviews can be separated out. 
 
 ```{r}
-google_rating_words |> 
-  filter(rating == 5) |> 
-  left_join(nrc, by = "word") |> 
-  filter(sentiment == "disgust")
-  count(sentiment) |> 
-  arrange(desc(n))
-  group_by(rating) |> 
-  mutate()
-  
+
+negative_nrc <- get_sentiments("nrc") |> 
+  filter(sentiment %in% c("disgust", "fear", "anger", 
+                          "negative", "sadness"))
+
 nrc <- get_sentiments("nrc")
 
-nrc |> count(sentiment)
+google_rating_words |> 
+  inner_join(get_sentiments("afinn")) |> 
+  group_by(rowid, rating) |> 
+  summarise(sentiment = mean(value, na.rm = TRUE), 
+            .groups = "drop") |> 
+  ggplot(aes(x = sentiment)) + 
+  geom_histogram() + 
+  facet_wrap(~ rating, scales = "free")
+  
+
 ```
+
+Maybe redo this to make a count of reviews with each sentiment? 
+
+```{r}
+google_rating_words |> 
+  inner_join(get_sentiments("nrc")) |> 
+  group_by(sentiment, rating, rowid) |> 
+  summarise(count = n_distinct(word), 
+            .groups = "drop") |> 
+  group_by(rating, sentiment) |> 
+  summarise(reviews = n_distinct(rowid), 
+            .groups = "drop") |> 
+  group_by(rating) |> 
+  mutate(sum = sum(reviews), 
+         pc = reviews / sum) |> 
+  ungroup() |> 
+  mutate(sentiment = fct_relevel(sentiment, 
+                                 c("surprise",
+                                   "anticipation", 
+                                   "joy", 
+                                   "trust", 
+                                   "positive", 
+                                   "negative", 
+                                   "sadness",
+                                   "fear", 
+                                   "anger", 
+                                   "disgust"))) |> 
+  ggplot(aes(x = pc, y = fct_rev(sentiment))) + 
+  geom_col(aes(fill = sentiment)) + 
+  scale_fill_manual(
+    values =c(
+      "anger" = "#780000", 
+      "disgust" = "#c1121f", 
+      "fear" = "#9e2a2b", 
+      "negative" = "#bc4749", 
+      "sadness" = "#b56576", 
+      "anticipation" = "#90e0ef", 
+      "joy" = "#00b4d8", 
+      "surprise" = "#caf0f8", 
+      "positive" = "#0077b6", 
+      "trust" = "#118ab2"
+    )
+  ) +
+  facet_wrap(~rating, scales = "free") + 
+  scale_x_continuous(labels = percent) +
+  guides(fill = "none") + 
+  theme(strip.background = element_rect(fill = "black")) + 
+  labs(title = "Breakdown of NRC sentiments in Google reviews by rating", 
+       subtitle = "In the Klang Valley.", 
+       y = "", 
+       x = "")
+  
+
+```
+
+What is the point of five-star reviews if 5% of them express disgust?
+
+```{r}
+trip_rating_words |> 
+  inner_join(get_sentiments("nrc")) |> 
+  group_by(sentiment, rating, rowid) |> 
+  summarise(count = n_distinct(word), 
+            .groups = "drop") |> 
+  group_by(rating, sentiment) |> 
+  summarise(reviews = n_distinct(rowid), 
+            .groups = "drop") |> 
+  group_by(rating) |> 
+  mutate(sum = sum(reviews), 
+         pc = reviews / sum) |> 
+  ungroup() |> 
+  mutate(sentiment = fct_relevel(sentiment, 
+                                 c("surprise",
+                                   "anticipation", 
+                                   "joy", 
+                                   "trust", 
+                                   "positive", 
+                                   "negative", 
+                                   "sadness",
+                                   "fear", 
+                                   "anger", 
+                                   "disgust"))) |> 
+  ggplot(aes(x = pc, y = fct_rev(sentiment))) + 
+  geom_col(aes(fill = sentiment)) + 
+  scale_fill_manual(
+    values =c(
+      "anger" = "#780000", 
+      "disgust" = "#c1121f", 
+      "fear" = "#9e2a2b", 
+      "negative" = "#bc4749", 
+      "sadness" = "#b56576", 
+      "anticipation" = "#90e0ef", 
+      "joy" = "#00b4d8", 
+      "surprise" = "#caf0f8", 
+      "positive" = "#0077b6", 
+      "trust" = "#118ab2"
+    )
+  ) +
+  facet_wrap(~rating, scales = "free") + 
+  scale_x_continuous(labels = percent) +
+  guides(fill = "none") + 
+  theme(strip.background = element_rect(fill = "black")) + 
+  labs(title = "Breakdown of NRC sentiments in Trip Advisor reviews by rating", 
+       subtitle = "In the Klang Valley.", 
+       y = "", 
+       x = "")
+  
+```
+
 
 
 ```{r fig.height=7}

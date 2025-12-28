@@ -1,0 +1,13 @@
+"0",""
+"0","google_rating_words <- google_kl_cuisine |> "
+"0","  select(rowid, rating, review) |> "
+"0","  unnest_tokens(word, review) |> "
+"0","  # mutate(word = SnowballC::wordStem(word, language = ""porter"")) |> "
+"0","  anti_join(stop_words, by = ""word"") |>"
+"0","  add_count(word) "
+"0",""
+"0",""
+"0","  bind_tf_idf(rating, word, n) |> "
+"0","  tidylo::bind_log_odds(rating, word, n)"
+"2","Error: object 'rating' not found
+"

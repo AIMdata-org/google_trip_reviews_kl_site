@@ -1,0 +1,5 @@
+"0",""
+"0","trip_kl_cuisine <- read_csv(""./data/trip_kl_cuisine.csv"")"
+"0",""
+"0","google_kl_cuisine <- read_csv(""./data/google_kl_cuisine.csv"")"
+"0",""

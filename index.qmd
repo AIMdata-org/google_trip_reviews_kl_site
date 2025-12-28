@@ -1,5 +1,5 @@
 ---
-title: "Google restaurant reviews in Kuala Lumpur, Petaling Jaya and Shah Alam, Malaysia"
+title: "Google and Trip Advisor restaurant reviews in Kuala Lumpur, Petaling Jaya and Shah Alam, Malaysia"
 subtitle: "Part one"
 author: "Sean Ng"
 organization: "AIMdata"

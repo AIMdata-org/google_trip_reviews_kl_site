@@ -14,7 +14,7 @@ website:
           text: Start of report
     right:
         - icon: github
-          href: "github.com/AIMdata-org"
+          href: "https://github.com/aimdata-labs"
 
 format:
   html:

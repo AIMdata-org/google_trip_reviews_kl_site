@@ -1,0 +1,995 @@
+---
+title: "Google and Trip Advisor restaurant reviews in Kuala Lumpur, Petaling Jaya and Shah Alam, Malaysia"
+subtitle: "Part one"
+author: "Sean Ng"
+organization: "AIMdata"
+date-modified: "26 December 2025"
+execute: 
+  echo: false
+---
+
+
+```{r setup, include = FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.width = 9)
+
+library(tidyverse)
+library(here)
+library(janitor)
+library(scales)
+library(tidytext)
+library(widyr)
+library(ggraph)
+library(patchwork)
+library(kableExtra)
+library(fuzzyjoin)
+library(viridis)
+library(textdata)
+library(DT)
+
+`%out%` <- Negate(`%in%`)
+options(scipen = 100)
+theme_set(theme_light())
+range_wna <- function(x){(x-min(x, na.rm = TRUE))/(max(x, na.rm = TRUE)-min(x, na.rm = TRUE))}
+
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+```
+
+
+```{r data}
+google_reviews <- read_csv("./data/GoogleReview_data_cleaned.csv") |> clean_names()
+
+trip_reviews <- read_csv("./data/TripAdvisor_data_cleaned.csv") |> clean_names() |> 
+  mutate(review = str_replace_all(review, "dim sum|Dim Sum|Dim sum", "dimsum"))
+```
+
+## Introduction and overview
+
+A common refrain for this postmodern age is that online reviews are useless. 
+
+Today, we're looking at two different sets of scraped restaurant reviews to determine to what extent that is true. Restaurant reviews from Google and Trip Advisor in Malaysia were scraped by [Ng Choon Khon](https://www.kaggle.com/datasets/choonkhonng/malaysia-restaurant-review-datasets) using the Selenium library. 
+
+Below, we've plotted out the restaurants found in both datasets according to the number of reviews and their mean rating. Immediately, we note an unnatural pattern in the Google dataset: Google limits Selenium to only being able to scrape around 300 reviews per restaurant, at most.
+
+Whilst this impacts and limits the dataset, we should still make the best use of it we can: Google's official API only allows five reviews to be extracted per restaurant because data freely given to the world must be paywalled and sold back to you.
+
+This analysis is ultimately meant to better understanding of Google's and Trip Advisor's review platforms from a consumer perspective, in order to choose more satisfactory restaurants. 
+
+
+<br>
+
+```{r histogram, fig.width=9}
+google_reviews |> 
+  filter(location %in% c("Petaling Jaya", "KL")) |> 
+  count(restaurant) |> 
+  ggplot(aes(x = n)) + 
+  geom_histogram(binwidth = 1/30, 
+                 fill = "#6a994e") + 
+  # geom_freqpoly(colour = "blue", alpha = .3) +
+  scale_x_log10(breaks = c(0, 10, 30, 100, 300, 1000), 
+                labels = comma) + 
+  labs(title = "Google reviews per restaurant", 
+       subtitle = "Largely limited to 300 reviews per restaurant",
+       x = "Number of reviews", 
+       y = "Number of restaurants") +
+
+trip_reviews |> 
+  filter(location %in% c("Petaling Jaya", "KL")) |> 
+  count(restaurant) |> 
+  ggplot(aes(x = n)) + 
+  geom_histogram(binwidth = 1/30, 
+                 fill = "#6a994e") + 
+  # geom_freqpoly(colour = "blue", alpha = .3) +
+  scale_x_log10(breaks = c(0, 10, 30, 100, 300, 1000), 
+                labels = comma) + 
+  labs(title = "Trip Advisor reviews per restaurant", 
+       subtitle = "No limits for number of reviews scraped",
+       x = "Number of reviews", 
+       y = "Number of restaurants") +
+
+  plot_annotation(
+    title = "The Trip Advisor reviews dataset has a much more natural distribution"
+  )
+
+```
+
+<br>
+
+### Limitations
+
+
+```{r malay-list}
+# Maybe someone with a better grasp of Malay can improve on this, 
+# without getting too many false positives
+# But it works pretty well as long as the not_malay_list is run as well
+# The number for Trip Advisor is likely lower still, since there were still some false positives
+# Remember that 
+malay_list <- " yang|sedap|makanan|Makanan| saya| Saya|dulu|semua|kali|sdap|sangat|Sangat|lauk|harga|tapi|terbaik|berbaloi| dgn|siap|tidak|bole|boleh| lain|cantik"
+
+# Not really that surprising that "kalian" is almost always just a mispelling of "kailan", 
+# But I'll leave it out as it could make too many false negatives
+not_malay_list <- "yangzhou|yang zhou|Yang zhou|wayang|Wayang|tapioca|Tapioca|Gansayam|Rasa Saya|ying yang|yin yang|goyang|fried rice|chargable|hargao"
+
+# Realising now that there is a malaytextr package
+# Remember to fix this
+
+malay_pc_summary <- rbind(google_reviews |>
+  filter(!is.na(review)) |> 
+  mutate(malay = ifelse(
+  str_detect(review, malay_list) & 
+    !str_detect(review, not_malay_list), 1, 0)) |> 
+  summarise(count = n(), 
+            malay = sum(malay)) |> 
+  mutate(malay_pc = round(malay / count * 100, 2), 
+         source = "Google"),
+
+trip_reviews |> 
+  filter(!is.na(review)) |> 
+  mutate(malay = ifelse(
+  str_detect(review, malay_list) & 
+    !str_detect(review, not_malay_list), 1, 0)) |> 
+  summarise(count = n(), 
+            malay = sum(malay)) |> 
+  mutate(malay_pc = round(malay / count * 100, 2), 
+         source = "TripAdvisor"))
+
+```
+
+
+
+Let's review the limitations once more, before we look into these datasets: 
+
+* What Google's dataset is representative of cannot be readily explained. Many restaurants only have their first 300 most "relevant" reviews. Google determines "relevance" by using a combination of recency, quality (word count, images) and whether or not a review was regarded by the community as helpful. 
+
+* Both Google maps and Trip Advisor are principally English language platforms when the language isn't regularly used by the majority of the population. Upon a cursory inspection, there are very few reviews in Malay in Google (`r malay_pc_summary |> filter(source == "Google") |> pull(malay_pc)`%) and even less in Trip Advisor (`r malay_pc_summary |> filter(source == "TripAdvisor") |> pull(malay_pc)`%). This is extremely different from even urban demographics (where there are proportionally more minorities, and consequently, English speakers). This bias is more understandable on Trip Advisor than it is on Google. 
+* The price range is missing from this dataset. This is unfortunate because price is one of the main topics mentioned in reviews. If I were to rescrape the data, I would definitely prioritise getting the price range. 
+
+* These reviews were extracted three years ago: some of these restaurants have closed, or have changed how they operate.  
+
+* Whilst reviews themselves are largely meant to informational, expressive or cautionary, review platforms are mired in layers of obfuscation, gamification and marketing. Additionally, Google's reviews are generally less policed than Trip Advisor's, with notable instances of [scams]((https://www.asiaone.com/lifestyle/restaurant-ibid-woo-wai-leong-police-reviews-scam)) and bribed reviews. Additionally, reviews are further affected by prevailing social mores (we will discuss below the skew towards five stars). 
+
+
+<br><br><br>
+
+
+## Adding cuisine
+
+These are the columns present in the Google dataset: 
+
+```{r}
+google_reviews |> 
+  colnames() 
+
+```
+
+Trip Advisor has additional columns for `review title` and `date`. 
+
+Let's add a column for cuisine (the code can be downloaded at the top of the page, but it was a lot of manual work) to increase interpretability and to maximise the usefulness of the data. We'll narrow down the scope to locations in the Klang Valley (KL, PJ and Shah Alam, in the datasets; since I'm most familiar with and most interested in this metro).  
+
+
+
+```{r buffet-fusion-lists}
+
+trip_buffet_list <- trip_reviews |> 
+  mutate(possible_buffet = ifelse(
+    str_detect(review, "Buffet|buffet") | 
+      str_detect(title, "Buffet|buffet") |
+      str_detect(restaurant, "Buffet|buffet")
+    , 1, 0), 
+    count = 1) |> 
+  group_by(restaurant) %>% 
+  summarise(reviews = sum(count), 
+            buffet_count = sum(count[possible_buffet == 1])) |> 
+  arrange(desc(buffet_count)) |> 
+  mutate(buffet_pc = buffet_count / reviews) |> 
+  mutate_at(vars(reviews, buffet_count, buffet_pc), ~range_wna(.)) |>  
+  mutate(buffet_score = (buffet_count + buffet_pc) / 2) |> 
+  arrange(desc(buffet_score)) |> 
+  filter(buffet_score >= .2) |> 
+  pull(restaurant)
+
+trip_fusion_list <- trip_reviews |> 
+  mutate(possible_fusion = ifelse(
+    str_detect(review, "Fusion|fusion") | 
+      str_detect(title, "Fusion|fusion") |
+      str_detect(restaurant, "Fusion|fusion")
+    , 1, 0), 
+    count = 1) |> 
+  group_by(restaurant) %>% 
+  summarise(reviews = sum(count), 
+            fusion_count = sum(count[possible_fusion == 1])) |> 
+  arrange(desc(fusion_count)) |> 
+  mutate(fusion_pc = fusion_count / reviews) |> 
+  mutate_at(vars(reviews, fusion_count, fusion_pc), ~range_wna(.)) |>  
+  mutate(fusion_score = (fusion_count +  fusion_pc) / 2) |> 
+  arrange(desc(fusion_score)) |> 
+  filter(fusion_score >= .11) |> 
+  pull(restaurant)
+
+google_buffet_list <- google_reviews |> 
+  mutate(possible_buffet = ifelse(
+    str_detect(review, "Buffet|buffet") | 
+      str_detect(restaurant, "Buffet|buffet")
+    , 1, 0), 
+    count = 1) |> 
+  group_by(restaurant) %>% 
+  summarise(reviews = sum(count), 
+            buffet_count = sum(count[possible_buffet == 1])) |> 
+  arrange(desc(buffet_count)) |> 
+  mutate(buffet_pc = buffet_count / reviews) |> 
+  mutate_at(vars(reviews, buffet_count, buffet_pc), ~range_wna(.)) |>  
+  mutate(buffet_score = (buffet_count + buffet_pc) / 2) |> 
+  arrange(desc(buffet_score)) |> 
+  filter(buffet_score >= 0.1764) |> 
+  pull(restaurant)
+
+google_fusion_list <- google_reviews |>
+  mutate(possible_fusion = ifelse(
+    str_detect(review, "Fusion|fusion") |
+      str_detect(restaurant, "Fusion|fusion")
+    , 1, 0), 
+    count = 1) |> 
+  group_by(restaurant) %>% 
+  summarise(reviews = sum(count), 
+            fusion_count = sum(count[possible_fusion == 1])) |> 
+  arrange(desc(fusion_count)) |> 
+  mutate(fusion_pc = fusion_count / reviews) |> 
+  mutate_at(vars(reviews, fusion_count, fusion_pc), ~range_wna(.)) |>  
+  mutate(fusion_score = (fusion_count +  fusion_pc) / 2) |> 
+  arrange(desc(fusion_score)) |> 
+  filter(fusion_score >= .11) |> 
+  pull(restaurant)
+```
+
+
+
+```{r reviews-cuisine-cleaning}
+
+reviews_cuisine_cleaning <- function(tbl) {
+  
+  tbl |> 
+    # Not a specific restaurant
+    filter(restaurant %out% c("Jalan Alor", "Sham's Cooked With Love", "Hawker Stalls in Chinatown",
+                              "Feast Village Starhill Gallery", "ICC Pudu", "Imbi Market", 
+                              "Taste of Asia", "Thirty8 Fashion", "Happy Mansion")) |> 
+    # Location cleaning
+    mutate(location = ifelse(restaurant %in% 
+                               c("Nizza Restaurant @ Sofitel Kuala Lumpur Damansara",
+                                 "Sri Nirwana Maju Restaurant - Bangsar",
+                                 "Hornbill Restaurant & Cafe", 
+                                 "Malai Thai Cuisine @ Cormar Suites",
+                                 "Qureshi",
+                                 "Aliyaa Island Restaurant & Bar",
+                                 "Skillet KL",
+                                 "Geographer cafe Kuala Lumpur",
+                                 "Gastro Sentral, Le Méridien Kuala Lumpur",
+                                 "Horizon Grill @ Banyan Tree Kuala Lumpur",
+                                 "Chamber’s Grill",
+                                 "Mercat Barcelona Gastrobar (1MontKiara)",
+                                 "Chynna"), 
+                             "KL", 
+                             location)) |> 
+    # Some cleaning 
+    mutate(restaurant = str_replace(restaurant, "Birch", "Huckleberry")) |> 
+    mutate(restaurant = str_replace_all(restaurant, "Passage thru'", "Passage Thru"),
+           restaurant = str_replace_all(restaurant, "Gravybaby", "GravyBaby"), 
+           restaurant = str_replace_all(restaurant, "Ploy", "PLOY"), 
+           restaurant = ifelse(restaurant == "What Tasty Food", "WTF - What Tasty Food", restaurant),
+           restaurant = ifelse(restaurant == "ATAS", "ATAS at The RuMa Hotel & Residences", restaurant), 
+           restaurant = ifelse(restaurant == "Al Rawsha Restaurant Kuala Lumpur", "Al Rawsha Restaurant", restaurant), 
+           restaurant = ifelse(restaurant == "Aliyaa", "Aliyaa Island Restaurant & Bar", restaurant), 
+           restaurant = ifelse(restaurant == "Arthur's Bar & Grill, Shangri-La Hotel, Kuala Lumpur", 
+                               "Arthur's Bar & Grill", restaurant), 
+           restaurant = ifelse(str_detect(restaurant, "Lemon Garden"), 
+                               "Lemon Garden", 
+                               restaurant), 
+           restaurant = ifelse(str_detect(restaurant, "Din Tai Fung at The Gardens Mall"),
+                               "Din Tai Fung at The Gardens Mall", 
+                               restaurant), 
+           restaurant = ifelse(restaurant == "Monnalisa Italian Restaurant", 
+                               "Monnalisa Ristorante Italiano", 
+                               restaurant), 
+           restaurant = ifelse(str_detect(restaurant, "Fatty Mee Hoon Kuih"), 
+                               "Fatty Mee Hoon Kuih", 
+                               restaurant), 
+           restaurant = ifelse(str_detect(restaurant, "Whisky Bar KL"), 
+                               "The Whisky Bar", 
+                               restaurant), 
+           restaurant = str_replace_all(restaurant, "W XYZ", "WXYZ"), 
+           restaurant = ifelse(restaurant == "The Daily Grind Bangsar", 
+                               "The Daily Grind", 
+                               restaurant), 
+           restaurant = ifelse(restaurant == "Chili's 1 Utama", "Chili's", restaurant), 
+           restaurant = str_replace_all(restaurant, "Merini", "Marini"))  |>
+    mutate(
+      cuisine = case_when(
+        
+        # The order of the case_when statements is important. Particularly, it should go
+        # South Asian -> Buffet -> Fusion,
+        # This is because I would consider South Asian buffet restaurants as South Asian.
+        # And I would not consider hotel buffets to be a type of fusion restaurant, 
+        # despite all the types of food they might serve.
+        # Also, Grill before Bar.
+        
+          str_detect(
+          restaurant,
+          "Grill|Steakhouse|Grub|Steak|Brasserie|steakhouse|BBQ|Rock Salt Restaurant|BBP|Churrascaria|Marble 8|Beast|Nando's|Nandos|Bar B Q|Down to Bones|Barbecue|Vantador|Bbq|Butcher Carey|PRIME|Brasserie|Karnivormalaya|Chamber's"
+        ) ~ "Grill",
+          str_detect(restaurant,
+          "Bistro|Deli|Secret Recipe|Tujo|Wild Sheep|Antipodean|Coffee|One Half|Blue Room|Awesome Canteen|Botanica|Chili's|Don's Diner|GravyBaby|Hornbill|Huck's|myBurgerLab|Naj & Belle|Tony Roma's|Louisiana|Cor Blimey|4Fingers|Bacon And Balls|POP PIZZA|After Black|Ashley's by Living Food|March Azalea Kitchen|Mighty Monster IPC|Sköhns Canteen|Table9|Rabbit Hole|Williams Corner|Tiki Taka|4 Fingers|Ben's|Souled Out|Suzi's Corner|Fuel Shack Signature|SOULed OUT|TGI Friday|Chilli's|Pigs & Wolf|Ship|Breakfast Thieves|Ante|Morganfield's|Subway|Meat The Porkers|Pan & Tamper|Hubba Mont Kiara|Bacon & Balls|Tate|Gin Ger|Fuel Shack|Jarrod & Rawlins|BreadFruits|Glass Tartines and Tipples|B-Lab|Mighty Monster|Ticklish Ribs|Cozy Corner|Duddha|Fat Brother|Define:food|Tangerine|Sausage & Ribs Shack|Texas Chicken|Coco Fika|Andra By Gula Cakery|D Place|Chef Zubir|Hubz|Maipi Corner|Marrybrown|Meet and Meat|Jibby & Co|Midwest|WhupWhup|Foodilicious Kitchen Shah Alam|Craveat"
+        ) ~ "Casual Western",
+        str_detect(
+          restaurant,
+          "Chinese|Taiwan|[\\p{Han}]|Nam Heong|Dynasty|Putien|Hoi|Gold Dragon|Han Room|Village Duck|Village Roast Duck|Unique|Steamboat|Ah |Roast Pork|Hokkien Mee|Dim Sum|Lai Po Heen|Yun House|Chynna|Li Yen|Shanghai|Lai Foong|Little Penang Kafé|Goon Wah|Shang Palace|YEN|Yut Kee|Din Tai Fung|Dragon-i|Celestial Court|The Ming Room|Sai Woo|Luk Yu|Yue|Way Modern Chinois|Hong Kong|Blue Boy Vegetarian Food Centre|Xin|Lai Ching Yuen|Noble House|Noodle House|Bak Kut|Fong Lye|Wan Tan Mee|Sarawak Laksa|Hakka|Ruyi & Lyn|Chicken rice|Chicken Rice|Char Siew|Siew Yoke|Dim Sum|Chiu Chow|Hainan|Hailam|Pork Noodles|Koong Woh Tong|Yong Tow Foo|Madam Tang| Kee|The Pot KL|Yu Noodle Cuisine|Wan Chun Ting|Muk Koot|Oversea|Marco Polo|Cu Cha Restaurant|Imperial|Grand Harbour|In Colonial Restaurant|Museum Restaurant|Heng|Hiong Kong|Ban Lee Restaurant|Heong|Restaurant Mama Love|Hee Lai Ton|New Paris|Kingdom Palace|Siu Siu|Sam You|Ti Chen|Mee Hoon|Fishball|Peoh|Esquire|Restourant Boston|7th Mile Kitchen"
+        ) ~ "Chinese",
+        str_detect(
+          restaurant,
+          "Italia|Olive|Ristorante|Osteria|Prego|Pizza|Trattoria|Nero Nero|Positano|a'Roma|Vin's Restaurant|Michelangelo|Marini's|Nizza|Porto Romano|Tatto|Neroteca|La Risata|Portofino|Ciao|Enoteca|Mangiare|Sassolino|Pizzeria|La Casa Restaurant & Patisserie|Favola|Senja Restaurant|Graze"
+        ) ~ "Italian",
+        str_detect(
+          restaurant,
+          "German|French|Chez|Marta's|Tapas|Bistro à Table|Iberico|El Toro Loco|Petit|Mercat|Dominic|El Cerdo|Quivo|Skillet KL|iberico|Yeast|Maison Francaise|El Mesón|Lafite|Topshelf|Wurst|Sabayon|Chateau|Naughty Babe Dirty Duck|Hit & Mrs|Le Gourmandin|Soleil|Suisse|IKEA|Leonardo|MARCO Creative Cuisine|Abanico|La Belle Saison"
+        ) ~ "European",
+        str_detect(restaurant, "Thai|Bangkok|BKK|Baan|Tamarind Springs|Chakri|BAAN|Samira by Asian Terrace|Ekkamai|Busaba|Mamasan|Krung Thep|Tomyam|Aroma Restaurant|Chef Korn|Tuk Tuk"
+                   ) ~ "Thai",
+        str_detect(restaurant, "Arab|Turkish|Al-|Halab|Egyptian|Tarbush|Wadi|Sahara Tent|Shawarma|Damascus|Syria|Hadramawt|diafah|Iraq|Sarifa|Al Rawsha|The Castle Restaurant|Saba Restaurant|Marhaba|ALRAWSHA Restaurant|Antara|Andalus|El Sham|Oregi Restaurant"
+                   ) ~ "Levantine",
+        # Malay (Chef Wan) and Malaysian (Madan Kwan's)
+        str_detect(
+          restaurant,
+          "Malay|Rasa|Cik|Dapur|Rebung|Zakhir|Village Park|ADU|Warisan|Nasi|Dancing Fish|Sarang|Bijan|Serai|Sambal|ATAS|Grandmama's|Onde Onde|JP teres|Satay Station|Chef Wan|De.Wan|Siti Li Dining|Pintu|Ramly|Penyet|Sepiring|Satay|Restoran Ali Food Corner|Open House|Sup Utara|Bawal Power|Ikan|Gulai|Kampung Mu|Marlina Station|Wong Solo|Bawang|Goreng"
+        ) ~ "Malay",
+        str_detect(
+          restaurant,
+          "Nonya|Baba|Mum's Place|Madam Kwan|Chuup|Old China Cafe|Nyonya|Little Penang|Oriental Cravings|Papparich|Uncle Don|Muar Restaurant|Kumi|Peranakan|1919 Restaurant|Penang"
+        ) ~ "Malaysian",
+        str_detect(
+          restaurant,
+          "Japan|Edo|Sushi|Kampachi|Iketeru|Menya|Nobu|Omakase|TOKYO|Tokyo|Tonkatsu|Udon|Soba|Ichibanya|Maruhi|Omulab|Zipangu|Miyabi|Izakaya Hanazen|hokkaido|Senya|IPPUDO|Umai-Ya|Ichiban|Yakiniku|Nihon|Lucky Tora|Hokkaido|Mo-Mo Paradise|Sushi|sushi|Uokatsu|Ramen|Tempura|Izakaya|Tokyo|Kyoto|Oishii|Gyoza|Ichiban|Tonkotsu|Tonkatsu|Sakura|Yakitori|Kyush|Teppanyaki|Taka|Kikubari|Ichiyutei|Enju|Okonomi|Toridoki|Syokudo|Tsukiji|Yuzu|Madam Salma|Fu-Rin"
+        ) ~ "Japanese",
+        # Why not merge all Korean BBQ into grill?
+        str_detect(
+          restaurant,
+          "Filipino|Bali|Vietnam|GOODDAM|Korea|Sao Nam|Naughty Nuri's|KyoChon|Viet|Dakgalbi|Sopoong|Kung Jung|Saigon|Sae Ma Eul|KoRyo-Won|Koryowon|Persia|Astana|Buns & Noodles|Kyochon|Topokki"
+        ) ~ "Other Asian",
+        
+        # Do not str_detect(.x, "bar")
+        str_detect(restaurant, "Whisky|Lounge|Bar|Decanter|Knowhere Bangsar|The Locker & Loft|Tom, Dick & Harry's|WET|The Enclave|Out of Africa|Opium|THIRTY8|Healy Mac's|TEMPTationS|Loco bar|La Bodega|Vertigo|The Social|No Black Tie|The BAR|O'Galito|Table 23|D Legends bar|Bobo KL|Rock Bottom|twenty-one kitchen+bar|Bentley's Pub|Vinh City Entertainment|twenty-one|Malones|White Horse Tavern|Supperclub KL|Backyard|The Ceylon bar|W1 Dining & Cocktails|Splash|Drop Exchange|Boardwalk|Deep Blue|The Sticky Wicket|OneSixFive|The Attic|Concubine KL|The Green Man|THE BAR|Marini’s on 57|Rooftop 25"
+        ) ~ "Bar",
+        str_detect(restaurant, "Cafe|Grind|Café|Tujo|cafe|Alexis|The Loaf|Yellow Brick Road|Huckleberry|TWG|Newens Tea House|Miss Ellie Tea House|Frisky Goat|Urbean|Ra-Ft|Backofen|STG Bukit Ceylon|VCR|Rise & Shine by Tapestry|Kafe|Kaffe|Kopi|Latte|Kopitiam"
+        ) ~ "Cafe",
+        str_detect(
+          restaurant,
+          "Kerala|India|Lanka|Malabar|Curry|Raju|Bhavan|Thosai|Tandoor|Bombay|Gem Restaurant|Nasi Kandar|NADODI|Qureshi|RSMY|Sangeetha|Nirwana|Asian Rice Pot|Masala|Annalakshmi|Aliyaa|MTR|Devi's Corner|WTF - What Tasty Food|Nadodi|Delhi Royale|FLOUR|Bakti Woodlands|Vishal Food|Banana Leaf|Hyderabad|sarvana bhavan|Spice Garden|Roti|TasteBud|Chapati|Pakistani|Jai Hind|BananaBro|Naan|SK Corner|Sri Paandi|Majapahit|Nan |GinRikSha|Briyani|Biryani|Maju Palace|Seetharam|Havelly|Punjab|Goa By Sapna Anand|Swaadisht|Mamak|Sri|Chapathi|Moghul|Rani|Aryan|Yarl|Sagar|ABC Foods Corner|Sheesh Mahal|Mallikas"
+        ) ~ "South Asian",
+        
+        # Buffet list
+        restaurant %in% trip_buffet_list ~ "Buffet",
+        restaurant %in% google_buffet_list ~ "Buffet", 
+        str_detect(restaurant, "Flock, W Kuala Lumpur|HYdeout By Grand Hyatt Kuala Lumpur|Curate"
+                   ) ~ "Buffet", 
+        # List of fusion restaurants
+        restaurant %in% trip_fusion_list ~ "Fusion",
+        restaurant %in% google_fusion_list ~ "Fusion", 
+        str_detect(restaurant, "Symphony by Chef Jo|Darren Chin|Dewakan|DC Restaurant|Sitka|Ginger Restaurant|Table & Apron|Foodsbury"
+                   ) ~ "Fusion", 
+        
+        # Unfortunate, there aren't enough Latino restaurants for their own category
+        str_detect(restaurant, "Latino|Mexican|Carretas|Mexico|Frontera|Mexicana|Cocina"
+        ) ~ "Other",
+        str_detect(restaurant, "Oliver Gourmet|Seafood|Shell Out|BAIT|Fisherman|Fish & Co|Shucked|Delay No More Crab Restaurant|Ombak"
+        ) ~ "Seafood",
+        str_detect(restaurant, "Vasco's|Latest Recipe|Lemon Garden|Prime|Gastro Sentral|Chinoz On The Park|Shook|Plane In The City|Contango|The Living Room|Curate At Four Seasons|Beta KL|CEDAR on 15|The Apartment|The Grand Getaway|Strato|Ril's|Chocha|Wizards at Tribeca|Nipah|Joloko|Leonardo's Dining Room & Wine Loft|Roofino Skydining|Troika|Dining In The Dark KL|PLOY|Atlas Gourmet Market|WIP|Nathalie Gourmet Studio|Altitude|The Canteen by Chef Adu|Latitude 03|The Orchid Conservatory|Graze Restaurant|Zende Restaurant|Crystal|Cielo KL|Cedar On 15"
+        ) ~ "Other Upmarket",
+        # Just mopping up all the Dai Chow
+        # I feel this is going to create problems down the line
+        str_detect(restaurant, "Restoran"
+        ) ~ "Chinese",
+        TRUE ~ "Other"
+  )) |> 
+    mutate(rowid = row_number())
+}
+
+
+```
+
+
+```{r trip-kl-cuisine and google-kl-cuisine}
+trip_kl_cuisine <- trip_reviews |> 
+  filter(location %in% c("KL", "Petaling Jaya", "Shah Alam")) |> 
+  reviews_cuisine_cleaning() 
+
+google_kl_cuisine <- google_reviews |> 
+  filter(location %in% c("KL", "Petaling Jaya", "Shah Alam")) |> 
+  reviews_cuisine_cleaning()
+
+trip_kl_cuisine |> write_csv("./data/trip_kl_cuisine.csv")
+
+google_kl_cuisine |> write_csv("./data/google_kl_cuisine.csv")
+
+summary_stats <- rbind(
+trip_kl_cuisine |>
+  mutate(count = 1) |> 
+  group_by(restaurant) |> 
+  mutate(reviews = sum(count)) |> 
+  ungroup() |> 
+  filter(reviews >= 20) |> 
+  summarise(mean_rating = mean(rating), 
+            median_rating = median(rating), 
+            mode_rating = Mode(rating)) |> 
+  mutate(source = "Trip Advisor"),
+
+google_kl_cuisine |>
+  mutate(count = 1) |> 
+  group_by(restaurant) |> 
+  mutate(reviews = sum(count)) |> 
+  ungroup() |> 
+  filter(reviews >= 20) |> 
+  summarise(mean_rating = mean(rating), 
+            median_rating = median(rating),
+            mode_rating = Mode(rating)) |> 
+  mutate(source = "Google")
+)
+```
+
+
+Determining the cuisine of a restaurant was mostly fairly obvious, and the categories hopefully self-explanatory. Additional notes on the coding of these cuisines may be found in the appendices. 
+
+Let's start first with an overview of both datasets, now with cuisines included. From the plot below, we see that: 
+
+* South Asian, Chinese, Casual Western, Japanese and Bars are the most commonly-reviewed restaurants in the Klang Valley. These are not the most common nor the most commonly-visited restaurants (hawker stalls).  
+
+* Chinese, Casual Western, Malaysian and Thai are the lowest-rated cuisines. 
+
+* Fusion, Other Upmarket (experiential dining or unspecified "international" cuisine) and bars have the highest ratings, with 60% or more of all reviews being five stars. 
+
+* Trip Advisor and Google reviewers differ the most on their opinions of Levantine, Casual Western and Japanese restaurants. With regards to Levantine food, in my opinion at least, it might be a case of "good for Malaysia", but not necessarily good compared to outside. 
+
+* The x-axes on the plots below show the percentage of reviews that are five stars by cuisine. This actually provides much more differentiation than just the mean rating (which is reflected in the colours below). As we will discuss in the next section, ratings are heavily skewed towards five stars. 
+
+
+<br>
+
+
+```{r cuisine-comparison-barchart, fig.width=7}
+
+google_kl_cuisine |> 
+  mutate(count = 1) |> 
+  group_by(cuisine) |> 
+  summarise(reviews = n(), 
+            five_star_reviews = sum(count[rating == 5]), 
+            mean_rating = mean(rating)) |> 
+  mutate(five_star_pc = five_star_reviews / reviews, 
+         source = "Google")|> 
+  select(five_star_pc, cuisine, source, reviews, mean_rating) |> 
+  rbind(
+    trip_kl_cuisine |> 
+      mutate(count = 1) |> 
+      group_by(cuisine) |> 
+      summarise(reviews = n(), 
+                five_star_reviews = sum(count[rating == 5]), 
+                mean_rating = mean(rating)) |> 
+      mutate(five_star_pc = five_star_reviews / reviews, 
+             source = "Trip Advisor") |> 
+      select(cuisine, five_star_pc, source, reviews, mean_rating)
+  ) |> 
+  ggplot(aes(x = five_star_pc, 
+             y = fct_reorder(cuisine, mean_rating), 
+             fill = mean_rating)) + 
+  geom_col(alpha = .7) + 
+  scale_x_continuous(labels = percent) +
+  geom_text(aes(label = comma(reviews)), 
+            position = position_dodge(width = .9), 
+            hjust = "inward", 
+            colour = "grey20") + 
+  scale_fill_viridis(direction = -1, begin = .15, option = "turbo") +
+  facet_wrap(~ source) + 
+  theme(strip.background = element_rect(fill = "black"), 
+        strip.text = element_text(face = "bold"),
+        legend.title = element_text(size = 9), 
+          legend.text = element_text(size = 7),
+          legend.key.size = unit(0.9, "lines")) +
+  labs(x = "% of reviews that are five-stars", 
+       y = "", 
+       title = "% of reviews that are five stars on Google and Trip Advisor, by cuisine", 
+       subtitle = "Only restaurants in the Klang Valley. Total number of reviews at the end of each bar.", 
+       fill = "Mean\nrating")
+  
+
+```
+
+<br><br><br>
+
+## Comparisons of average ratings
+
+With reference to the histograms below, that ratings are skewed towards the higher end: the mean rating of restaurants on Google is **`r summary_stats |> filter(source == "Google") |> pull(mean_rating) |> round(2)`** and the mean rating on Trip Advisor is **`r summary_stats |> filter(source == "Trip Advisor") |> pull(mean_rating) |> round(2)`**. The median and mode for both datasets is **5**.  
+
+It really could be said that the default review rating is five stars. This means that restaurant reviews on these platforms are quite lenient. It is hard for me to believe that half of all reviews were about truly exceptional dining experiences: **`r round(google_kl_cuisine |> filter(rating == 5) |> nrow() / nrow(google_kl_cuisine) * 100, 2)`%** of all ratings in the Google dataset for the Klang Valley are five stars; in Trip Advisor, it was **`r round(trip_kl_cuisine |> filter(rating == 5) |> nrow() / nrow(trip_kl_cuisine) * 100, 2)`%**. 
+
+<br>
+
+```{r compare-mean-ratings-histogram}
+compare_histograms <- function(tbl){
+  tbl |> 
+    mutate(count = 1) |> 
+    ggplot(aes(x = rating, y = count)) + 
+    geom_col(fill = "#6a994e") + 
+    scale_y_continuous(labels = comma) + 
+    labs(y = "Number of reviews", 
+         x = "Rating")
+}
+
+google_kl_cuisine |> 
+  compare_histograms() +
+  labs(title = "Google ratings") +
+  coord_flip() +
+
+trip_kl_cuisine |> 
+  compare_histograms() +
+  labs(title = "TripAdvisor ratings") + 
+  coord_flip() +
+  
+  plot_annotation(
+    title = "Similar distributions of review ratings",
+    subtitle = "Only includes restaurants in the Klang Valley."
+  )
+
+
+```
+
+<br>
+
+Reviews are limited (in every sense of the word) to a one-to-five scale. In the scatterplots below, we note that **almost all restaurants mostly receive five stars (blue) or four stars (green)**. This does seem to indicate that restaurant ratings are not very good at distinguishing between restaurants. 
+
+
+<br>
+
+
+```{r restaurant-comparison-trip-google, warning=FALSE, message=FALSE}
+
+compare_google_trip <- function(tbl){
+  
+  tbl |> 
+    group_by(restaurant, cuisine) |> 
+    summarise(reviews = n(), 
+              mean_rating = mean(rating), 
+              median_rating = median(rating), 
+              mode_rating = Mode(rating),
+              .groups = "drop") |>  
+    filter(reviews >= 20)
+  }
+
+plot_google_trip <- function(tbl){
+  
+  tbl |> 
+    ggplot(aes(x = reviews, 
+               y = mean_rating)) +
+    geom_point(aes(colour = median_rating), 
+               alpha = .4) + 
+    # scale_size_continuous(limits = c(1, 10)) +
+    scale_x_log10(labels = comma) +
+    scale_colour_viridis(option = "turbo", begin = .15, end = .9, direction = -1, 
+                         labels = label_number(accuracy = .1)) +
+    # ggrepel::geom_text_repel(aes(label = cuisine)) + 
+    geom_smooth(method = "lm", alpha = .1, size = 0, span = .5) + 
+    geom_smooth(method = "lm", se = FALSE, alpha = .1, size = .2) + 
+    labs(subtitle = "Restaurants with less than 20 reviews excluded", 
+         x = "Number of reviews",
+         y = "Mean Rating",
+         colour = "Median Rating") +
+    theme(legend.title = element_text(size = 9), 
+          legend.text = element_text(size = 7),
+          legend.key.size = unit(0.9, "lines"))
+    
+}
+  
+
+google_kl_cuisine |> 
+  compare_google_trip() |> 
+  plot_google_trip() + 
+  # ylim(3.8, 4.6) +
+  labs(title = "Google reviews") +
+  guides(size = guide_legend(override.aes = list(alpha = 1))) +
+
+trip_kl_cuisine |> 
+  compare_google_trip() |> 
+  plot_google_trip() + 
+  # ylim(3.8, 4.6) +
+  labs(title = "Trip Advisor reviews") +
+  guides(size = "none") +
+  
+  plot_annotation(title = "Klang Valley restaurants and average ratings") +
+  plot_layout(guides = "collect") & theme(legend.position = "bottom")
+
+ggsave("./plots/cuisine_comparison_trip_google.png", height = 7, width = 11, units = "in")
+
+```
+
+
+
+
+
+<br><br><br>
+
+### Restaurants in both Google and Trip
+
+Let's investigate a bit more by looking at restaurants that appear in both the Google and Trip datasets. 
+
+Below, we have plotted restaurants based on their mean ratings on Google and Trip Advisor. The globalised nature (with such heavy representation from casual western restaurants) of the Malaysian food scene seems to result in Google (which is used more heavily by locals) and Trip Advisor (which is used more often by travellers) agreeing more than not. 
+
+Looking at the top-right quadrant, we see that the restaurants rated most highly by Google and Trip Advisor are mostly fine dining: Sushi Hibiki is a high-end omakase restaurant and seems to be regarded as the best meal in the Klang Valley; DC Restaurant has one Michelin star. Sausage Kl Cafe and Grill, however, was a restaurant specialising in English breakfast. And Antipodean is a cafe that is, to me, a solid 3/5; but it still has around the same Trip Advisor rating as Dewakan, which has two Michelin stars. 
+
+We'll look into this more in next week's section of the report, but it appears that the commonality of five-star reviews indicates that the mean rating might be more an indicator of expectations being met, than any true excellence. 
+
+
+<br>
+
+```{r restaurant-fuzzy-match, warning=FALSE}
+
+restaurant_fuzzy_match <- stringdist_join(
+  trip_reviews |> 
+    filter(location %in% c("KL", "Petaling Jaya", "Shah Alam")) |> 
+    distinct(restaurant) |> 
+    mutate(restaurant_match = str_remove_all(restaurant, "Restaurant|Cuisine|restaurant|Restoran|Curry House|Japanese"), 
+           restaurant_match = trimws(restaurant_match)) |> 
+    select(restaurant_trip = restaurant, 
+           restaurant_match), 
+  google_kl_cuisine |> filter(location %in% c("KL", "Petaling Jaya", "Shah Alam")) |> 
+    distinct(restaurant)|> 
+    mutate(restaurant_match = str_remove_all(restaurant, "Restaurant|Cuisine|restaurant|Restoran|Curry House|Japanese"),
+           restaurant_match = trimws(restaurant_match)) |> 
+    select(restaurant_google = restaurant, 
+           restaurant_match), 
+  by = "restaurant_match", 
+  ignore_case = TRUE, 
+  method = "jw",
+  max_dist = 99, 
+  distance_col = "dist"
+) |> 
+  group_by(restaurant_match.x) |> 
+  slice_min(order_by = dist, n = 1) |> 
+  arrange((dist)) |> 
+  select(match_x = restaurant_match.x, 
+         match_y = restaurant_match.y, 
+         dist,
+         restaurant_google, 
+         restaurant_trip) |>
+  ungroup()
+
+both_google_and_trip <- restaurant_fuzzy_match |> 
+  filter(match_x != "Teh Laris Cafe" | match_y != "Thosai Cafe") |> 
+  filter(match_x != "The Ming Room" | match_y != "The Living Room") |>
+  filter(match_x != "Cilantro & Wine Bar" | match_y != "ZENZERO & Wine Bar") |> 
+  filter(match_x != "Kedai Kopi Pak Ngah" | match_y != "Kedai Kopi Lai Foong") |> 
+  filter(match_x != "Shanghai" | match_y != "Old Shanghai") |> 
+  filter(match_x != "Ah Ni Bak Kut Teh" | match_y != "Ah Sang Bak Kut Teh") |> 
+  filter(match_x != "Pin Wei Seafood" | match_y != "Hoi Peng Seafood") |> 
+  filter(match_x != "Cafe Cafe" | match_y != "Cafe ETC") |> 
+  filter(match_x != "Tao Chinese" | match_y != "Ee Chinese") |>
+  filter(match_x != "Seoul Garden" | match_y != "Lemon Garden") |>
+  filter(match_x != "De.Wan" | match_y != "Dewakan") |>
+  filter(dist <= 0.16666667)
+
+combined_google_trip <- trip_kl_cuisine |> 
+  filter(restaurant %in% both_google_and_trip$restaurant_trip) |> 
+  select(cuisine, location, restaurant, rating, review) |>
+  mutate(source = "TripAdvisor") |> 
+  rbind(
+    google_kl_cuisine |> 
+      filter(restaurant %in% both_google_and_trip$restaurant_google) |> 
+      select(cuisine, location, restaurant, rating, review) |> 
+      mutate(source = "Google")
+  ) |> 
+  mutate(row_id = row_number()) |> 
+  left_join(
+    both_google_and_trip |> 
+      distinct(restaurant_google, restaurant_trip) |>
+      rename(restaurant = restaurant_trip),
+    by = c("restaurant")
+  ) |> 
+  left_join(
+    both_google_and_trip |> 
+      distinct(restaurant_google, restaurant_trip) |>
+      rename(restaurant = restaurant_google),
+    by = c("restaurant")
+  ) |> 
+  mutate(restaurant_new = ifelse(!is.na(restaurant_google), 
+                                 restaurant_google, 
+                                 restaurant)) |> 
+  group_by(row_id, location, cuisine, restaurant = restaurant_new, review, source) |> 
+  summarise(rating = mean(rating), 
+            .groups = "drop") |> 
+  mutate(restaurant = trimws(restaurant))
+
+```
+
+
+
+```{r common-restaurants, fig.height=8, fig.width=10, eval=FALSE}
+
+# Putting in the finished plot, instead of evaluating again
+# so that I can embed a link to the full-size plot in the image
+
+combined_google_trip |> 
+  group_by(restaurant, source) |> 
+  summarise(rating = mean(rating), 
+          .groups = "drop") |> 
+  pivot_wider(names_from = source, 
+              values_from = rating) |> 
+  left_join(
+    combined_google_trip |> 
+      count(restaurant, 
+            name = "count"), 
+    by = "restaurant"
+  ) |> 
+  left_join(
+    combined_google_trip |> 
+      distinct(restaurant, cuisine), 
+    by = "restaurant"
+  ) |> 
+  filter(!is.na(Google) & !is.na(TripAdvisor)) |> 
+  ggplot(aes(x = Google, y = TripAdvisor)) + 
+  geom_smooth(alpha = .1, size = 0, span = .5, 
+              method = "lm") + 
+  stat_smooth(geom = "line", alpha = .1, size =.5, span = .5, 
+              method = "lm") +
+  geom_point(aes(colour = cuisine, 
+                 size = count)) + 
+  scale_colour_viridis_d(option = "turbo") +
+  ggrepel::geom_text_repel(aes(label = restaurant), 
+                           size = 1.2) + 
+  labs(title = "Comparison between Google and TripAdvisor restaurant ratings", 
+       subtitle = "Size indicates number of reviews", 
+       y = "Trip Advisor mean rating", 
+       x = "Google mean rating", 
+       colour = "Cuisine", 
+       size = "Review count") + 
+  # guides(colour = guide_legend(override.aes = list(size = .7))) +
+  theme(legend.title = element_text(size = 6), 
+        legend.text = element_text(size = 6), 
+        legend.key.size = unit(0.3, "lines"))
+
+ggsave("./plots/restaurant_comparison_trip_google.png", height = 9, width = 11, units = "in")  
+```
+
+[![Click inmage for full size](./plots/restaurant_comparison_trip_google.png)](https://github.com/AIMdata-org/google_trip_reviews_kl_site/raw/main/plots/restaurant_comparison_trip_google.png)
+
+<br>
+
+What becomes clearer when we re-plot the restaurants, this time using percentage of ratings that are five stars, the distinction between fine dining and more casual restaurants is much clearer. Fine dining restaurants tend to have above 50% of their reviews being five stars in both Trip and Google.  
+
+The restaurants in the "fine dining" group have higher floors and ceilings, when it comes to the percentage of ratings that are five stars. This is why lacking price range in this dataset is such a shame, as it seems like these two groups should be graded on their own curves.
+
+We also see how Google reviewers are stricter (less lenient), with restaurants struggling to get above 70% five-star reviews. Though, as mentioned this isn't any particular mark of quality. 
+
+Also to be investigated further is to what extent restaurants in the "fine dining" achieve their higher scores due to better service and environments, as opposed to food quality. 
+
+
+<br>
+
+```{r new-rating-common-restaurants, fig.height=8, fig.width=10, warning=FALSE, eval=FALSE}
+
+# Putting in the finished plot, instead of evaluating again
+# so that I can embed a link to the full-size plot in the image
+
+combined_google_trip |> 
+  mutate(new_rating = ifelse(rating %in% c(5), 1, 0)) |> 
+  group_by(restaurant, source) |> 
+  summarise(new_rating = mean(new_rating), 
+            .groups = "drop") |> 
+  pivot_wider(names_from = "source", 
+              values_from = new_rating) |> 
+  left_join(
+    combined_google_trip |> 
+      count(restaurant, 
+            name = "count"), 
+    by = "restaurant"
+  ) |> 
+  left_join(
+    combined_google_trip |> 
+      distinct(restaurant, cuisine), 
+    by = "restaurant"
+  ) |> 
+  filter(!is.na(Google) & !is.na(TripAdvisor)) |> 
+  ggplot(aes(x = Google, y = TripAdvisor)) + 
+  geom_smooth(alpha = .1, size = 0, span = .5) + 
+  stat_smooth(geom = "line", alpha = .1, size =.5, span = .5) +
+  geom_point(aes(colour = cuisine, 
+                 size = count)) + 
+  scale_colour_viridis_d(option = "turbo") +
+  ggrepel::geom_text_repel(aes(label = restaurant), 
+                           size = 1.2) + 
+  scale_x_continuous(labels = percent, breaks = c(0, 0.2, 0.3, 0.4, 0.5, 
+                                                  0.6, 0.7, 0.8, 0.9, 1), 
+                     limits = c(0.2, .87)) + 
+  scale_y_continuous(labels = percent, breaks = c(0, 0.2, 0.3, 0.4, 0.5, 
+                                                  0.6, 0.7, 0.8, 0.9, 1), 
+                     limits = c(0.2, .94)) +
+  scale_size_continuous(breaks = c(100, 500, 1000, 2000)) +
+  labs(title = "Comparison between Google and TripAdvisor using percentage of 5-star reviews", 
+       subtitle = "Size indicates number of reviews.", 
+       y = "% of 5-star ratings, Trip Advisor", 
+       x = "% of 5-star ratings, Google",
+       caption = "Sources: Google; TripAdvisor; Ng Choon Khon.",
+       colour = "Cuisine", 
+       size = "Review count") + 
+  # guides(colour = guide_legend(override.aes = list(size = .7))) +
+  theme(legend.title = element_text(size = 6), 
+        legend.text = element_text(size = 6), 
+        legend.key.size = unit(0.3, "lines"))
+
+ggsave("./plots/restaurant_comparison_new_ratings2.png", height = 9, width = 11, units = "in")  
+```
+
+[![Click image for full size](./plots/restaurant_comparison_new_ratings2.png)](https://github.com/AIMdata-org/google_trip_reviews_kl_site/raw/main/plots/restaurant_comparison_new_ratings2.png)
+
+<br><br><br>
+
+## Conclusions: Part one
+
+Let's review what we've learnt so far; though we probably already knew some of these things instinctually, it is still nice to get confirmation: 
+
+* Reviews skew very heavily towards five stars. More than half of all reviews give five stars. This means that Google Maps and TripAdvisor are not useful in determining where one should eat since five stars could mean anything from "met expectations" to "truly exceptional". 
+
+* Re-sorting (lowest, most recent) and filtering reviews will likely provide more informative reviews on Google. There is no real reason to accept their default sorting by "relevance" as you can pay for visibility, pay for reviews, and pay to remove reviews.
+
+* However, this means that we're still engaging with reviews as individual data points. Neither Google nor Trip Advisor provide us any other tools to sift through the data. Even looking at the review summary will not always be helpful, since having five-star reviews be less than 50% of your total is more an indicator that the restaurant is not fine dining, than any other indicator of quality. 
+
+* Outside of the home, hawker centres and coffee shops are places where food is most commonly consumed. Yet these businesses are not reviewed with anywhere the same frequency as the casual western eateries or chinese restaurants/*dai chows*. It is difficult (by design?) to mark individual hawkers since they operate from within the premises of another business. Additionally, hawkers are much less likely to engage with Google or Trip Advisor to curate or market their online presence, leading to these platforms being blind to the needs of hawkers and continue to cater towards restaurants (who might actual have marketing budgets).
+
+Rare is the occasion that I, whilst searching on Google or Trip Advisor, find a truly exceptional meal. My most memorable experiences have mostly been the result of personal recommendations or curated lists from trusted reviewers. I'm starting to think that the main purpose of review platforms is marketing. 
+
+<br><br><br>
+
+## Appendices
+
+### Notes on cuisine
+
+With reference to the cleaning script for determining the cuisine of a restaurant, there are few things to bear in mind in trying to update or improve it. 
+
+I have made a distinction between Malay and Malaysian cuisines. This difference can be boiled down to Chef Wan (Malay) vs. Madan Kwan (Malaysian). A Hainan Kopitiam would be considered as Malaysian. 
+
+A few more points for the ordering of arguments within the `case_when` statement: 
+
+I have considered South Asian buffet restaurants to be South Asian restaurants. I And I do not consider hotel buffets to be a type of fusion restaurant, despite all the types of food they might serve. Make sure the list for grills is before that for bars (because of "barbecue"). 
+
+"Other Upmarket" is mostly expensive experiential dining, with some tourist traps. In this category are *Dining in the Dark* and *Plane in KL*. I've also included Turkish food under the "Levantine" umbrella. 
+
+"Fusion" restaurants are explicitly fusion restaurants, with the word "fusion" in their names or showing up in a proportion of reviews. The same is true for buffet restaurants (which were numerous enough in the Trip Advisor dataset to warrant their own category). 
+
+The Google and Trip Advisor datasets for the Klang Valley have a fairly comparable number of reviews: `r google_kl_cuisine |> nrow() |> format(big.mark = ",")` in Google and `r trip_kl_cuisine |> nrow() |> format(big.mark = ",")` in Trip Advisor. 
+
+<br>
+
+```{r reviews-by-cuisine, fig.height=6.5}
+cuisine_intermediate <- trip_kl_cuisine |> 
+  count(cuisine, sort = TRUE, name = "trip_reviews") |> 
+  left_join(
+    google_kl_cuisine |> 
+      count(cuisine, sort = TRUE, name = "google_reviews")
+  ) |> 
+  mutate(
+    total_reviews = trip_reviews + google_reviews
+  ) |> 
+  arrange(desc(total_reviews)) 
+
+cuisine_intermediate |> 
+  pivot_longer(cols = c(trip_reviews, google_reviews, total_reviews), 
+               names_to = "source", 
+               values_to = "count") |> 
+  mutate(source = str_replace_all(source, "_reviews", ""), 
+         source = str_to_title(source),
+         source = str_replace_all(source, "Trip", "Trip Advisor")) |> 
+  mutate(source = factor(source, levels = c("Google",
+                                            "Trip Advisor",
+                                            "Total"))) |> 
+  ggplot(aes(x = count, y = fct_rev(fct_relevel(cuisine, cuisine_intermediate |> pull(cuisine))))) + 
+  geom_col(aes(fill = cuisine)) +
+  geom_text(aes(label = comma(count)), 
+            position = position_dodge(width = .9), 
+            hjust = "inward", 
+            colour = "grey20", 
+            size = 3) +
+  facet_wrap(~source, scales = "free_x") + 
+  scale_x_continuous(labels = number_format(scale = 1/1000, suffix = "k", 
+                                            accuracy = 1)) + 
+  scale_fill_viridis_d(option = "turbo") + 
+  theme(legend.title = element_text(size = 8), 
+        legend.text = element_text(size = 8), 
+        legend.key.size = unit(0.3, "lines"), 
+        strip.background = element_rect(fill = "black"), 
+        plot.caption = element_text(hjust = .5)) + 
+  labs(x = "Number of reviews", 
+       y = "", 
+       fill = "Cuisine",
+       title = "Number of reviews by cuisine", 
+       subtitle = "Restaurants in the Klang Valley", 
+       caption = "Sources: Ng Choon Khon; Google; TripAdvisor.")
+
+  
+```
+Trip Advisor reviewers tended to review far more bars, buffets (including hotel buffets), cafes, fusion, Japanese and unspecified upmarket restaurants than Google reviewers. This is commonsensical since Trip Advisor tends to have travellers using it.
+
+<br><br><br>
+
+### Reference tables
+
+Below are reference tables for the restaurants used in this analysis. 
+
+#### Google: restaurants in the Klang Valley
+
+Sorted in descending order, according to mean rating. 
+
+```{r dt-google}
+google_kl_cuisine |> 
+  select(restaurant, cuisine, rating, location) |> 
+  group_by(restaurant, cuisine, location) |> 
+  summarise(mean_rating = round(mean(rating), 2),
+            median_rating = median(rating), 
+            reviews = n(), .groups = "drop") |> 
+  filter(reviews >= 20) |> 
+  relocate(location, .after = reviews) |> 
+  rename(`mean rating` = mean_rating, 
+         `median rating` = median_rating) |> 
+  arrange(desc(`mean rating`)) |> 
+  datatable(filter = list(position = "top", clear = "FALSE"), 
+            options = list(pageLength = 10, scrollX = TRUE), 
+            caption = htmltools::tags$caption(
+              style = 
+              "caption-side: top;
+              text-align: center;
+              color: black;
+              font-size: 120% ;",
+              "Google: restaurants in the Klang Valley with more than 20 reviews"
+            )) |> 
+  formatStyle(0, target = "row", lineHeight = "85%", fontSize = "80%")
+
+
+```
+
+<br><br><br>
+
+#### Trip Advisor: restaurants in the Klang Valley
+
+Sorted in descending order, according to mean rating. 
+
+```{r dt-trip}
+trip_kl_cuisine |> 
+  select(restaurant, cuisine, rating, location) |> 
+  group_by(restaurant, cuisine, location) |> 
+  summarise(mean_rating = round(mean(rating), 2),
+            median_rating = median(rating), 
+            reviews = n(), .groups = "drop") |> 
+  filter(reviews >= 20) |> 
+  relocate(location, .after = reviews) |> 
+  rename(`mean rating` = mean_rating, 
+         `median rating` = median_rating) |> 
+  arrange(desc(`mean rating`)) |> 
+  datatable(filter = list(position = "top", clear = "FALSE"), 
+            options = list(pageLength = 10, scrollX = TRUE), 
+            caption = htmltools::tags$caption(
+              style = 
+              "caption-side: top;
+              text-align: center;
+              color: black;
+              font-size: 110% ;",
+              "Trip Advisor: restaurants in the Klang Valley with more than 20 reviews"
+            )) |> 
+  formatStyle(0, target = "row", lineHeight = "85%", fontSize = "80%")
+
+
+
+
+```
+
+
+
+
+
+

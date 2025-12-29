@@ -145,7 +145,7 @@ trip_reviews |>
 
 Let's review the limitations once more, before we look into these datasets: 
 
-* What Google's dataset is representative of cannot be readily explained. Many restaurants only have their first 300 most "relevant" reviews. Google determines "relevance" by using a combination of recency, quality (word count, images) and whether or not a review was regarded by the community as helpful. 
+* What Google's dataset is representative of cannot be readily explained. For many restaurants, only their first 300 most "relevant" reviews have been extracted. Google determines "relevance" by using a combination of recency, quality (word count, images) and whether or not a review was regarded by the community as helpful. 
 
 * Both Google maps and Trip Advisor are principally English language platforms when the language isn't regularly used by the majority of the population. Upon a cursory inspection, there are very few reviews in Malay in Google (`r malay_pc_summary |> filter(source == "Google") |> pull(malay_pc)`%) and even less in Trip Advisor (`r malay_pc_summary |> filter(source == "TripAdvisor") |> pull(malay_pc)`%). This is extremely different from even urban demographics (where there are proportionally more minorities, and consequently, English speakers). This bias is more understandable on Trip Advisor than it is on Google. 
 * The price range is missing from this dataset. This is unfortunate because price is one of the main topics mentioned in reviews. If I were to rescrape the data, I would definitely prioritise getting the price range. 
@@ -272,12 +272,20 @@ reviews_cuisine_cleaning <- function(tbl) {
                                  "Horizon Grill @ Banyan Tree Kuala Lumpur",
                                  "Chamber’s Grill",
                                  "Mercat Barcelona Gastrobar (1MontKiara)",
-                                 "Chynna"), 
+                                 "Chynna", 
+                                 "The Grand Getaway",
+                                 "Dining in the Dark KL",
+                                 "Sausage KL Cafe & Deli"), 
                              "KL", 
                              location)) |> 
     # Some cleaning 
     mutate(restaurant = str_replace(restaurant, "Birch", "Huckleberry")) |> 
     mutate(restaurant = str_replace_all(restaurant, "Passage thru'", "Passage Thru"),
+           restaurant = str_replace_all(restaurant, 
+                                        "Little Penang Cafe|Little Penang Kafe",
+                                        "Little Penang Kafé - KLCC"),
+           restaurant = str_replace_all(restaurant, "The Grand Getaway by Grand Hyatt Kuala Lumpur", 
+                                        "The Grand Getaway"), 
            restaurant = str_replace_all(restaurant, "Gravybaby", "GravyBaby"), 
            restaurant = str_replace_all(restaurant, "Ploy", "PLOY"), 
            restaurant = ifelse(restaurant == "What Tasty Food", "WTF - What Tasty Food", restaurant),
@@ -857,7 +865,7 @@ I have made a distinction between Malay and Malaysian cuisines. This difference 
 
 A few more points for the ordering of arguments within the `case_when` statement: 
 
-I have considered South Asian buffet restaurants to be South Asian restaurants. I And I do not consider hotel buffets to be a type of fusion restaurant, despite all the types of food they might serve. Make sure the list for grills is before that for bars (because of "barbecue"). 
+I have considered South Asian buffet restaurants to be South Asian restaurants. I And I do not consider hotel buffets to be a type of fusion restaurant, despite all the types of food they might serve. Additionally, when altering the cleaning script, make sure that the argument for grills is before that for bars (because of "barbecue"). 
 
 "Other Upmarket" is mostly expensive experiential dining, with some tourist traps. In this category are *Dining in the Dark* and *Plane in KL*. I've also included Turkish food under the "Levantine" umbrella. 
 
@@ -952,6 +960,8 @@ google_kl_cuisine |>
 
 
 ```
+
+
 
 <br><br><br>
 

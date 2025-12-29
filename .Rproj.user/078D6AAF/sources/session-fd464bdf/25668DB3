@@ -1,0 +1,33 @@
+{
+    "id": "25668DB3",
+    "path": "~/R/google_trip_reviews_kl_site/index.qmd",
+    "project_path": "index.qmd",
+    "type": "quarto_markdown",
+    "hash": "1805481532",
+    "contents": "",
+    "dirty": false,
+    "created": 1764663416488.0,
+    "source_on_save": false,
+    "relative_order": 1,
+    "properties": {
+        "rmdVisualMode": "false",
+        "rmdVisualWrapConfigured": "true",
+        "source_window_id": "",
+        "Source": "Source",
+        "docOutlineVisible": "1",
+        "rmdVisualCollapsedChunks": "",
+        "rmdVisualModeLocation": "2:0",
+        "cursorPosition": "627,0",
+        "scrollLine": "620",
+        "last_setup_crc32": "fd464bdf4a4ca40f",
+        "docOutlineSize": "120"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1767019159,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1767019160062,
+    "read_only": false,
+    "read_only_alternatives": []
+}

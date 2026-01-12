@@ -98,7 +98,7 @@ trip_rating_bigrams <- read_csv("./data/trip_rating_bigrams.csv")
 
 ```
 
-## DRAFT: Words
+## Words
 
 In this second part of our analysis, we'll be doing some text analytics. To recap, we are using data scraped by [Ng Choon Khon](https://www.kaggle.com/datasets/choonkhonng/malaysia-restaurant-review-datasets) containing restaurant reviews in Malaysia on Google and Trip Advisor. Take a look at the [first part](https://aimdata-labs.github.io/google_trip_reviews_kl_site/) of this report to see the analysis of ratings as well as the dataset limitations. 
 
@@ -242,7 +242,7 @@ ggsave(here("plots", "google_chinese_1_star_network_graph.png"),
 ```
 
 
-[![Click image for full size](./plots/google_chinese_1_star_network_graph.png)](https://github.com/AIMdata-org/google_trip_reviews_kl_site/raw/main/plots/google_chinese_1_star_network_graph.png)
+[![Click image for full size](./plots/google_chinese_1_star_network_graph.png)](https://raw.githubusercontent.com/aimdata-labs/google_trip_reviews_kl_site/main/plots/google_chinese_1_star_network_graph.png)
 
 <br>
 
@@ -310,9 +310,9 @@ ggsave(here("plots", "google_chinese_5_star_network_graph.png"),
 ```
 
 
-[![Click image for full size](./plots/google_chinese_5_star_network_graph.png)](https://github.com/AIMdata-org/google_trip_reviews_kl_site/raw/main/plots/google_chinese_5_star_network_graph.png)
+[![Click image for full size](./plots/google_chinese_5_star_network_graph.png)](https://raw.githubusercontent.com/aimdata-labs/google_trip_reviews_kl_site/main/plots/google_chinese_5_star_network_graph.png)
 
-
+<br>
 
 As a whole, Chinese restaurants seem to be judged by Google reviewers on quite a consistent set of criteria. 
 
@@ -479,9 +479,12 @@ There is, however, one keyword that does work.
 
 ## "Highly recommended restaurant" (sic)
 
-[![What directory mode looks like](./plots/directory_mode.png)](https://github.com/AIMdata-org/google_trip_reviews_kl_site/raw/main/plots/directory_mode.png)
+[![What directory mode looks like](./plots/directory_mode.png)](https://raw.githubusercontent.com/aimdata-labs/google_trip_reviews_kl_site/main/plots/directory_mode.png)
 
-Type in "highly recommended restaurant" (sic) into Google Maps (or "recommended restaurant" on iOS) and see what you get. I get a list of some pretty good restaurants, with no photos. I don't agree with every entry, this "directory" mode is probably the best performance I've seen from Google Maps in a long time. 
+<br>
+
+Type in "highly recommended restaurant" (sic) into Google Maps (or "recommended restaurant" on iOS) and see what you get. I get a list of some pretty good restaurants, with no photos. I don't agree with every entry, this "directory" mode is probably the best (but still flawed) performance I've seen from Google Maps in a long time. 
+
 Now, this may seem like we've somehow gamed the system, but to bring us back down to Earth, this list of highly recommended restaurants is actually still part of the play, according to Gemini (Google Maps Support has no real answers on this topic): 
 
 >When you type "highly recommend restaurant" into the search bar, Google Maps interprets those words as keywords rather than a command. Instead of looking for a specific badge, the app uses its algoritm to build a list based on several "trust signals."
@@ -515,7 +518,7 @@ For reference, Google Maps's base algorithm (which is used when you type in "res
 
 But back to "directory" mode: even though you get more satisfactory results, bear in mind that the Google rating has already been taken into account twice: ratings are part of how Google calculates "Prominence" and the algorithm also applies a rating filter. 
 
-That it does not solely act like a keyword is likely to prevent more manipulation and SEO shenanigans. So far, I've only been able to trigger "directory" mode with this one phrase. What else can trigger *Directory mode* on Google Maps? In these trying times, could some variation of "reasonable price restaurant" work?
+That it does not solely act like a keyword is likely to prevent more manipulation and SEO shenanigans. So far, I've only been able to trigger "directory" mode with this one phrase. What else can trigger **Directory mode** on Google Maps? In these trying times, could some variation of "reasonable price restaurant" work?
 
 
 
@@ -523,12 +526,15 @@ That it does not solely act like a keyword is likely to prevent more manipulatio
 
 ## Conclusions part two
 
-Normal searches on Google Maps leave you at the mercy of a highly-gamified system. 
+Online reviews are part of a highly-gamified ecosystem. Standard searches will leave you at the mercy of content pushed by SEO, influencers and a black-box algorithm. 
 
-Searching an area in Google Maps for "highly recommended restaurant" (sic) in Android and "recommended restaurant" (sic) in iOS can trigger "directory" mode. 
+Whilst there are ways around this, like directory mode, ultimately, the system fundamentally does not seem to be geared towards the needs of customers (especially not if you need tips and tricks just to get passable performance). Customisation occurs mostly on the back-end: there is no way to tell Google what is relevant to you. Instead, they glean this from your online footprint, believing you will unconsciously betray your wants and needs to them.
 
-Food is not just food. It is an "experience" that must be marketed and upsold to you. 
-Are online reviews useful? Maybe 3/5. 
+Therein lies the rub. Just because you know my race, my sex, my income, whether or not I'm pregnant, and can put me into one of their numerous categories and clusters does not mean you know me as a person, or even as a customer. You could argue that this widespread data theft might not lead to the best results for one person, but that it is used to produce apps and algorithms that are able to serve the majority well. 
+
+I do not think Google Reviews serve the majority well. Part of this has to do with the fact that online reviews are not solely about food. It is an "experience" that must be upsold and marketed to you. In trying to be Instagram, they have forgotten how to be a map, a directory.  
+
+So, are online reviews useful? Maybe 3/5. 
 
 
 
@@ -540,7 +546,9 @@ Are online reviews useful? Maybe 3/5.
 
 ## Appendices
 
-Within Trip Advisor, we see certain commonalities in the language used, irrespective of rating. Additionally, we see that Trip Advisor reviewers tend to pay more attention to service than Google. The bigram "dining experience" appears across all ratings. We see a lot of bigrams related to wait times ("20 minutes", "30 minutes" etc.) in one-star and two-star reviews. However, as with the bigrams in Google reviews, 
+Even within the much more verbose reviews on Trip Advisor, we still see that the language used is still very limited, irrespective of rating. 
+
+<br>
 
 ```{r fig.height=7}
 trip_rating_bigrams |> 
@@ -568,13 +576,17 @@ trip_rating_bigrams |>
        title = "Most common bigrams by rating, Trip Advisor reviews")
   
 ```
+<br>
 
+Just as an interesting point, when we look at one-star Trip Advisor reviews for Casual Western restaurants, we see the words "hot" and "cold" be quite prominent. 
 
-"Hot" and "cold" has to do with underprepared and/or microwaved food
+I believe this has to do with underprepared and/or improperly microwaved food. Microwaved food, bought from a food service or brought from a central kitchen, is one of the sad curses of modern dining. Waves of consolidation up and down the restaurant supply chain have left all hawkers in Singapore with one choice of yellow mee or only one type of bee hoon. In America, US Foods and Sysco have completely sewn up the supply chain, leading to all jalapeño poppers and mozarella sticks coast-to-coast to be the exact same. 
+
+Whilst that level of corporate consolidation has not yet occurred in Malaysia, the process is nevertheless underway. 
 
 <br>
 
-[![Click image for full size](./plots/trip_casual_western_1_star_network_graph.png)](https://github.com/AIMdata-org/google_trip_reviews_kl_site/raw/main/plots/trip_casual_western_1_star_network_graph.png)
+[![Click image for full size](./plots/trip_casual_western_1_star_network_graph.png)](https://raw.githubusercontent.com/aimdata-labs/google_trip_reviews_kl_site/main/plots/trip_casual_western_1_star_network_graph.png)
 
 ```{r eval=FALSE}
 trip_casual_western_1_star_network <- trip_kl_cuisine |> 
@@ -633,11 +645,13 @@ ggsave(here("plots", "trip_casual_western_1_star_network_graph.png"),
 
 <br>
 
-"Cold" shows up again under one-star reviews of Casual Western restaurants, indicating poor attention to detail and/or rushed food preparation. 
+"Cold" shows up again under one-star Google reviews of Casual Western restaurants, indicating poor attention to detail and/or rushed food preparation. 
+
+As a side note (in an appendix), there is a way to microwave food well -- apparently using the defrost setting achieves the most even cooking. 
 
 <br>
 
-[![Click image for full size](./plots/google_casual_western_1_star_network_graph.png)](https://github.com/AIMdata-org/google_trip_reviews_kl_site/raw/main/plots/google_casual_western_1_star_network_graph.png)
+[![Click image for full size](./plots/google_casual_western_1_star_network_graph.png)](https://raw.githubusercontent.com/aimdata-labs/google_trip_reviews_kl_site/main/plots/google_casual_western_1_star_network_graph.png)
 
 ```{r eval=FALSE}
 google_casual_western_1_star_network <- google_kl_cuisine |> 
@@ -694,9 +708,13 @@ ggsave(here("plots", "google_casual_western_1_star_network_graph.png"),
        width = 10, height = 6.5, units = "in", dpi = 300)
 ```
 
+<br>
 
+In contrast, when we look at five-star reviews of Casual Western restaurants on Trip Advisor, we see a slew of foods which would suffer if the preparation were lacking: steaks, ribs, and even sausages would suffer from a microwave. 
 
+<br>
 
+[![Click image for full size](./plots/google_casual_western_1_star_network_graph.png)](https://raw.githubusercontent.com/aimdata-labs/google_trip_reviews_kl_site/main/plots/google_casual_western_1_star_network_graph.png)
 
 ```{r eval=FALSE}
 trip_casual_western_5_star_network <- trip_kl_cuisine |> 
@@ -759,59 +777,3 @@ ggsave(here("plots", "trip_casual_western_5_star_network_graph.png"),
 
 
 
-```{r eval=FALSE}
-trip_chinese_1_star_network <- trip_kl_cuisine |> 
-  clean_common_foods() |>  
-  mutate(review_id = row_number()) |> 
-  filter(cuisine == "Chinese" & rating == 1) |> 
-  unnest_tokens(word, review) |> 
-  anti_join(stop_words) |> 
-  filter(str_detect(word, "[a-z]")) |> 
-  add_count(word) |> 
-  filter(n > 12) |> 
-  pairwise_cor(word, review_id, sort = TRUE) |> 
-  filter(correlation >= .18) |> 
-  left_join(
-    google_kl_cuisine |> 
-      clean_common_foods() |> 
-      mutate(review_id = row_number()) |> 
-      filter(cuisine == "Chinese" & rating == 1) |> 
-      unnest_tokens(word, review) |> 
-      anti_join(stop_words) |> 
-      filter(str_detect(word, "[a-z]")) |> 
-      add_count(word) |> 
-      filter(n > 12) |> 
-      pairwise_count(word, review_id, sort = TRUE), 
-    by = c("item1", "item2")
-  ) |> 
-  igraph::graph_from_data_frame() |> 
-  ggraph(layout = "kk") + 
-  geom_edge_link(aes(alpha = correlation, edge_width = n), colour = "#457b9d", check_overlap = TRUE) +
-  scale_edge_width_continuous(range = c(.1, 4), trans = "log10") +
-  scale_alpha_continuous(range = c(0.01, 0.08)) +
-  geom_node_point(colour = "#457b9d", alpha = 0.2, size = .5) +
-  geom_node_text(aes(label = ifelse(name %in% 
-                                        c("waited", "service", "experience", 
-                                          "price", "quality", "fresh", 
-                                          "tasted", "disappointing"),
-                                      str_to_title(name),
-                                      "")), 
-                 size = 3.5, 
-                 alpha = .9, 
-                 colour = "#00afb9", 
-                 fontface = "bold") +
-  geom_node_text(aes(label = name), size = 3.1, alpha = .4, 
-                 colour = "#caf0f8") + 
-  theme(legend.position = "none", 
-        plot.caption = element_text(hjust = .5, colour = "#219ebc"), 
-        panel.background = element_rect(fill = "#03071e"), 
-        plot.background = element_rect(fill = "#1b263b"), 
-        plot.title = element_text(colour = "#219ebc"), 
-        plot.subtitle = element_text(colour = "#219ebc", size = 10)) + 
-  labs(title = "Network graph of One-star Chinese Restaurant Trip Advisor Review Descriptions", 
-       subtitle = "Line thickness indicates number of events involving those words, line transparency indicates the correlation between words. Key topics highlighted.", 
-       caption = "Source: tripadvisor.com; Ng Choon Khon")
-
-ggsave(here("plots", "trip_chinese_1_star_network_graph.png"), 
-       width = 10, height = 6.5, units = "in", dpi = 300)
-```

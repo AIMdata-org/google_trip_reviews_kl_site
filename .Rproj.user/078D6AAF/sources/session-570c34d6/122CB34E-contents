@@ -1,0 +1,792 @@
+---
+title: "How useful are restaurant reviews? Google and Trip Advisor reviews in the Klang Valley, Malaysia"
+subtitle: "Part two: Words"
+author: "Sean Ng"
+organization: "AIMdata"
+date-modified: "11 January 2026"
+execute: 
+  echo: false
+---
+
+
+```{r setup, include = FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.width = 9)
+
+
+library(tidyverse)
+library(here)
+library(janitor)
+library(scales)
+library(tidytext)
+library(widyr)
+library(ggraph)
+library(patchwork)
+library(kableExtra)
+library(fuzzyjoin)
+library(viridis)
+library(textdata)
+library(stringr)
+library(topicmodels)
+
+`%out%` <- Negate(`%in%`)
+options(scipen = 100)
+theme_set(theme_light())
+range_wna <- function(x){(x-min(x, na.rm = TRUE))/(max(x, na.rm = TRUE)-min(x, na.rm = TRUE))}
+
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+```
+
+
+```{r data}
+
+trip_kl_cuisine <- read_csv("./data/trip_kl_cuisine.csv")
+
+google_kl_cuisine <- read_csv("./data/google_kl_cuisine.csv")
+
+google_rating_words <- google_kl_cuisine |> 
+  select(rowid, rating, review) |> 
+  unnest_tokens(word, review) |> 
+  # mutate(word = SnowballC::wordStem(word, language = "porter")) |> 
+  anti_join(stop_words, by = "word") |>
+  add_count(word, rating) 
+
+trip_rating_words <- trip_kl_cuisine |> 
+  select(rowid, review, rating) |> 
+  unnest_tokens(word, review) |> 
+  # mutate(word = SnowballC::wordStem(word, language = "porter")) |> 
+  anti_join(stop_words, by = "word") |>
+  add_count(word, rating) 
+
+# Commented out because I've written them into CSVs already
+# So I don't keep on stressing the environment
+
+# google_rating_bigrams <- google_kl_cuisine |> 
+#   select(rowid, rating, review, cuisine) |> 
+#   unnest_tokens(bigram, review, token = "ngrams", n = 2) |> 
+#   filter(!is.na(bigram)) |> 
+#   add_count(bigram) |> 
+#   separate(bigram, c("word1", "word2"), sep = " ") |> 
+#   filter(!word1 %in% stop_words$word) |> 
+#   filter(!word2 %in% stop_words$word) |> 
+#   count(word1, word2, rating, sort = TRUE) |> 
+#   unite(bigram, word1, word2, sep = " ") |> 
+#   bind_tf_idf(bigram, rating, n)
+  
+# trip_rating_bigrams <- trip_kl_cuisine |> 
+#   select(rowid, rating, review, cuisine) |> 
+#   unnest_tokens(bigram, review, token = "ngrams", n = 2) |> 
+#   filter(!is.na(bigram)) |> 
+#   add_count(bigram) |> 
+#   separate(bigram, c("word1", "word2"), sep = " ") |> 
+#   filter(!word1 %in% stop_words$word) |> 
+#   filter(!word2 %in% stop_words$word) |> 
+#   count(word1, word2, rating, sort = TRUE) |> 
+#   unite(bigram, word1, word2, sep = " ") |> 
+#   bind_tf_idf(bigram, rating, n)  
+
+google_rating_bigrams <- read_csv("./data/google_rating_bigrams.csv") 
+
+
+trip_rating_bigrams <- read_csv("./data/trip_rating_bigrams.csv") 
+
+```
+
+## Words
+
+In this second part of our analysis, we'll be doing some text analytics. To recap, we are using data scraped by [Ng Choon Khon](https://www.kaggle.com/datasets/choonkhonng/malaysia-restaurant-review-datasets) containing restaurant reviews in Malaysia on Google and Trip Advisor. Take a look at the [first part](https://aimdata-labs.github.io/google_trip_reviews_kl_site/) of this report to see the analysis of ratings as well as the dataset limitations. 
+
+Let's start with an overview of the most common bigrams (two consecutive words) that appear in Google reviews, broken down by rating. 
+
+Whilst there isn't too much in the plot below that is unexpected, it should be noted that our collective vocabulary, when it comes to restaurant reviews, is quite limited: "nice food" could indicate anything between three stars and five. Though we could argue that reviewers are being way too lenient by classing "nice food" as five stars. 
+
+Service, and not just food quality, is a major determinant in one-star ratings. This perhaps could be one of the reasons why fine dining restaurants have higher floors and ceilings for their ratings than more casual dining options. 
+
+<br>
+
+```{r common-google-bigrams, fig.height=7}
+google_rating_bigrams |> 
+  mutate(rating = as.factor(rating)) |> 
+  arrange(desc(n)) |> 
+  group_by(rating) |> 
+  slice(1:15) |> 
+  ungroup() |> 
+  ggplot(aes(x = n, y = reorder_within(bigram, n, rating))) + 
+  geom_col(aes(fill = rating)) + 
+  scale_fill_manual(values = c(
+    `1` = "#e76f51", 
+    `2` = "#f4a261", 
+    `3` = "#e9c46a", 
+    `4` = "#2a9d8f", 
+    `5` = "#264653"
+  )) +
+  facet_wrap(~ rating, scales = "free") +
+  scale_y_reordered() + 
+  guides(fill = "none") + 
+  theme(strip.background = element_rect(fill = "black")) + 
+  labs(x = "Count", 
+       y = "", 
+       title = "Most common bigrams by rating, Google reviews")
+
+ggsave("./plots/common_bigrams_google.png", height = 5, width = 7, units = "in")
+  
+```
+
+<br>
+
+Whilst ratings might be very lenient overall -- cheapening a five-star rating -- we can at least say that there are definitely also qualitative differences between five-star and one-star reviews. 
+
+
+<br><br><br>
+
+## One-star and five-star reviews of Chinese restaurants
+
+Let's dig a little deeper. As noted in the previous part, Chinese and Casual Western restaurants -- overall -- have the highest numbers of reviews and some of the lowest mean ratings across all cuisines. Let's take advantage of this by looking more closely at one single slice of the data. 
+
+Below, is a network graph of words used in one-star reviews of Chinese restaurants in the Klang Valley. The thickness of the lines between words indicates the number of times a word pairing has shown up in reviews. The transparency of the lines indicates the strength of the correlation between those two words. Key topics have been highlighted by me.  
+
+We see a combination of quite undesirable experiences: smelly, pricey, not fresh, rude, long waits and poor quality. Additionally, service and the overall "experience" show up prominently as well (especially when it relates to events such as Chinese New Year, which often sees large banquets for friends, family and associates). 
+
+
+<br>
+
+```{r}
+clean_common_foods <- function(tbl){
+  tbl |> 
+    mutate(review = str_replace_all(review, "Dim sum|Dim Sum|dim sum", "dimsum"), 
+         review = str_replace_all(review, "Tom Yam|Tom Yum|Tom yam|Tom yum|tom yam|tom yum", "tomyum"), 
+         review = str_replace_all(review, "Char Siew|Char siew|char siew", "charsiew"), 
+         review = str_replace_all(review, "Hokkien mee|Hokkien Mee|hokkien mee", "hokkienmee"), 
+         review = str_replace_all(review, "Roast Duck|Roast duck|roast duck", "roastduck"),
+         review = str_replace_all(review, "Fried Rice|Fried rice|fried rice", "friedrice"), 
+         review = str_replace_all(review, "Roast pork|roast pork|Roast Pork", "roastpork"), 
+         review = str_replace_all(review, "Mee hoon|mee hoon|Bee hoon|bee hoon|Mee Hoon|Bee Hoon", "beehoon"), 
+         review = str_replace_all(review, "Bak kut teh|bak kut teh|Bak Kut Teh", "bakkutteh"), 
+         review = str_replace_all(review, "char kuey teow|Char kuey teow|char koay teow|Char Kuey Teow", "charkueyteow"),
+         review = str_replace_all(review, "Hong Kong|hong kong", "hongkong"), 
+         review = str_replace_all(review, "Siew yoke|siew yoke|siu yuk|Siu Yuk", "siewyoke"), 
+         review = str_replace_all(review, "chee cheong fun|Chee cheong fun", "cheecheongfun"), 
+         review = str_replace_all(review, "Kaya toast|kaya toast", "kaya toast"), 
+         review = str_replace_all(review, "Din Tai Fung|din tai fung", "dintaifung"), 
+         review = str_replace_all(review, "Salted egg|salted egg", "saltedegg"), 
+         review = str_replace_all(review, "Kuala Lumpur|kuala lumpur|Kuala lumpur", "kl"), 
+         review = str_replace_all(review, "Xiao long bao|xiao long bao|Xiao Long Bao", "xiaolongbao"), 
+         review = str_replace_all(review, "Chicken rice|chicken rice|Chicken Rice", "chickenrice"), 
+         review = str_replace_all(review, "Foreign workers|foreign workers", "foreignworkers"))
+}
+```
+
+```{r one-star-network-graph, eval=FALSE}
+
+# Just going to load the result in the html, 
+# So as to not run the network graph every time we render 
+
+google_chinese_1_star_network <- google_kl_cuisine |> 
+  clean_common_foods() |>  
+  mutate(review_id = row_number()) |> 
+  filter(cuisine == "Chinese" & rating == 1) |> 
+  unnest_tokens(word, review) |> 
+  anti_join(stop_words) |> 
+  filter(str_detect(word, "[a-z]")) |> 
+  add_count(word) |> 
+  filter(n > 10) |> 
+  pairwise_cor(word, review_id, sort = TRUE) |> 
+  filter(correlation >= .15) |> 
+  left_join(
+    google_kl_cuisine |> 
+      clean_common_foods() |> 
+      mutate(review_id = row_number()) |> 
+      filter(cuisine == "Chinese" & rating == 1) |> 
+      unnest_tokens(word, review) |> 
+      anti_join(stop_words) |> 
+      filter(str_detect(word, "[a-z]")) |> 
+      add_count(word) |> 
+      filter(n > 10) |> 
+      pairwise_count(word, review_id, sort = TRUE), 
+    by = c("item1", "item2")
+  ) |> 
+  igraph::graph_from_data_frame() |> 
+  ggraph(layout = "fr") + 
+  geom_edge_link(aes(alpha = correlation, edge_width = n), colour = "#457b9d", check_overlap = TRUE) +
+  scale_edge_width_continuous(range = c(.1, 4), trans = "log10") +
+  scale_alpha_continuous(range = c(0.01, 0.08)) +
+  geom_node_point(colour = "#457b9d", alpha = 0.2, size = .5) +
+  geom_node_text(aes(label = ifelse(name %in% 
+                                        c("waited", "service", "experience", 
+                                          "price", "quality", "fresh", 
+                                          "tasted", "disappointing"),
+                                      str_to_title(name),
+                                      "")), 
+                 size = 3.5, 
+                 alpha = .9, 
+                 colour = "#00afb9", 
+                 fontface = "bold") +
+  geom_node_text(aes(label = name), size = 3.1, alpha = .4, 
+                 colour = "#caf0f8") + 
+  theme(legend.position = "none", 
+        plot.caption = element_text(hjust = .5, colour = "#219ebc"), 
+        panel.background = element_rect(fill = "#03071e"), 
+        plot.background = element_rect(fill = "#1b263b"), 
+        plot.title = element_text(colour = "#219ebc"), 
+        plot.subtitle = element_text(colour = "#219ebc", size = 10)) + 
+  labs(title = "Network graph of One-star Chinese Restaurant Google Review Descriptions", 
+       subtitle = "Line thickness indicates number of events involving those words, line transparency indicates the correlation between words. Key topics highlighted.", 
+       caption = "Source: maps.google.com; Ng Choon Khon")
+
+ggsave(here("plots", "google_chinese_1_star_network_graph.png"), 
+       width = 10, height = 6.5, units = "in", dpi = 300)
+```
+
+
+[![Click image for full size](./plots/google_chinese_1_star_network_graph.png)](https://raw.githubusercontent.com/aimdata-labs/google_trip_reviews_kl_site/main/plots/google_chinese_1_star_network_graph.png)
+
+<br>
+
+Let's look at the flipside and see what reviewers said about five-star dining experiences in Chinese restaurants. As with the plot above, line thickness shows the frequency of the word pair and the transparency indicates the correlation. Key topics once again highlighted by me. 
+
+Whilst five-star reviews of Chinese restaurants are much more numerous, we don't necessarily see a greater variety of expression (just more foods mentioned), we see that points of failure are very similar to points of success for Chinese restaurants: freshness, friendly service, waiting times and reasonable pricing. We also see a key phrase that we will delve into in a later section: "highly recommended". 
+
+<br>
+
+```{r google-five-star-chinese-network, eval=FALSE}
+google_chinese_5_star_network <- google_kl_cuisine |> 
+  clean_common_foods() |>  
+  mutate(review_id = row_number()) |> 
+  filter(cuisine == "Chinese" & rating == 5) |> 
+  unnest_tokens(word, review) |> 
+  anti_join(stop_words) |> 
+  filter(str_detect(word, "[a-z]")) |> 
+  add_count(word) |> 
+  filter(n > 20) |> 
+  pairwise_cor(word, review_id, sort = TRUE) |> 
+  filter(correlation >= .15) |> 
+  left_join(
+    google_kl_cuisine |> 
+      clean_common_foods() |> 
+      mutate(review_id = row_number()) |> 
+      filter(cuisine == "Chinese" & rating == 5) |> 
+      unnest_tokens(word, review) |> 
+      anti_join(stop_words) |> 
+      filter(str_detect(word, "[a-z]")) |> 
+      add_count(word) |> 
+      filter(n > 20) |> 
+      pairwise_count(word, review_id, sort = TRUE), 
+    by = c("item1", "item2")
+  ) |> 
+  igraph::graph_from_data_frame() |> 
+  ggraph(layout = "fr") + 
+  geom_edge_link(aes(alpha = correlation, edge_width = n), colour = "#457b9d", check_overlap = TRUE) +
+  scale_edge_width_continuous(range = c(.1, 4), trans = "log10") +
+  scale_alpha_continuous(range = c(0.01, 0.08)) +
+  geom_node_point(colour = "#457b9d", alpha = 0.2, size = .5) +
+  geom_node_text(aes(label = ifelse(name %in% 
+                                        c("peak", "service", "experience", 
+                                          "price", "pork", "fresh", "fish",
+                                          "tasted", "recommended", "friendly", "crispy"),
+                                      str_to_title(name),
+                                      "")), 
+                 size = 3.2, 
+                 alpha = .9, 
+                 colour = "#00afb9", 
+                 fontface = "bold") +
+  geom_node_text(aes(label = name), size = 3.1, alpha = .4, 
+                 colour = "#caf0f8") + 
+  theme(legend.position = "none", 
+        plot.caption = element_text(hjust = .5, colour = "#219ebc"), 
+        panel.background = element_rect(fill = "#03071e"), 
+        plot.background = element_rect(fill = "#1b263b"), 
+        plot.title = element_text(colour = "#219ebc"), 
+        plot.subtitle = element_text(colour = "#219ebc", size = 10)) + 
+  labs(title = "Network graph of Five-star Chinese Restaurant Google Review Descriptions", 
+       subtitle = "Line thickness indicates number of reviews involving those words, line transparency indicates the correlation between words. Key topics highlighted.", 
+       caption = "Source: maps.google.com; Ng Choon Khon")
+
+ggsave(here("plots", "google_chinese_5_star_network_graph.png"), 
+       width = 10, height = 6.5, units = "in", dpi = 300)
+```
+
+
+[![Click image for full size](./plots/google_chinese_5_star_network_graph.png)](https://raw.githubusercontent.com/aimdata-labs/google_trip_reviews_kl_site/main/plots/google_chinese_5_star_network_graph.png)
+
+<br>
+
+As a whole, Chinese restaurants seem to be judged by Google reviewers on quite a consistent set of criteria. 
+
+<br><br><br>
+
+
+
+## Topic modelling and expectations
+
+Since reviews are so heavily skewed towards 5 stars, let's use topic modelling to break down reviews into just two groups which I have termed **Recommended** and **Everything else**. This will hopefully sort out all the five- and four-star reviews that are not actual recommendations. 
+
+Below, the per-topic-per-word probabilities of bigrams in the Google dataset have been plotted. The x-axes indicate the probability of each bigram appearing in reviews under each topic. 
+
+Bigrams have been used here because individual words are not as informative ("service" vs. "excellent service"). As mentioned, our collective vocabulary is quite limited when it comes to food: "fine dining" is used both as a compliment and as a mocking pejorative. 
+
+<br> 
+
+```{r lda, fig.height=6}
+google_bigrams_dtm <- google_rating_bigrams |>  
+  cast_dtm(rating, bigram, n)
+
+google_bigrams_lda <- 
+  LDA(google_bigrams_dtm, k = 2, control = list(seed = 133))
+
+google_bigrams_topics <- tidy(google_bigrams_lda, matrix = "beta")
+
+google_bigrams_topics |> 
+  # Remember topic 1 is recommended 
+  mutate(topic = ifelse(
+    topic == 1, "2. Everything else", "1. Recommended"
+  )) |> 
+  group_by(topic) |> 
+  slice_max(beta, n = 20) |> 
+  ungroup() |> 
+  arrange(topic, -beta) |> 
+  ggplot(aes(x = beta, y = reorder_within(term, beta, topic), fill = topic)) + 
+  geom_col() + 
+  scale_fill_manual(
+    values = c("1. Recommended" = "#8ac926", 
+               "2. Everything else" = "#ff595e")
+  ) +
+  facet_wrap(~ topic, scales = "free_y") + 
+  scale_y_reordered() + 
+  labs(title = "20 most-probable bigrams per topic", 
+       subtitle = "From Google reviews of restaurants in the Klang Valley.\nOnly shows bigrams that occur more than 20 times in the dataset.", 
+       y = "", 
+       x = "Per-topic probability (beta)") + 
+  guides(fill = "none") +
+  theme(strip.background = element_rect(fill = "black"), 
+        strip.text = element_text(size = 10, face = "bold"))
+
+ggsave(here("plots", "google_lda.png"), 
+       width = 7, height = 4, units = "in", dpi = 300)
+```
+
+
+<br>
+
+Let's take a closer look at individual bigrams. We'll start with some of the most common foods that show up in Google reviews. With the plots below, the important thing is to compare the relative per-topic probabilities of each of the bigrams that occur in each topic i.e. how probable it is that a particular food will be in a "Recommended" review.   
+
+Restaurants seem to have the worst performance with chicken rice, fried rice, char siew, dim sum and roast pork. Amongst cuisines, Indian and Italian food seem to be recommended more often than not; the opposite is true for Chinese restaurants. 
+
+Perhaps reviewers are less generous with foods they are familiar with. I know I am: I've had extremely good char siew and roast pork (that can be easily and readily accessed) and can be uncharitable and judgemental when they are done poorly. 
+
+Given the low percentage of reviews that use Malay that we mentioned in the previous part, many of the most common foods here are not halal at all. This underlines that the demographics of Google reviewers (who are already much more likely to be locals than Trip Advisor reviewers) are skewed heavily towards minorities. 
+
+<br>
+
+```{r common-foods-lda, fig.height=6.5}
+
+google_bigrams_topics |> 
+   # Remember topic 1 is recommended 
+  mutate(topic = ifelse(
+    topic == 1, "2. Everything else", "1. Recommended"
+  )) |> 
+  filter(term %in% c(
+    # Because they stayed long enough for dessert?
+    "ice cream",
+    "indian food", 
+    "chinese restaurant", 
+    "roast pork", 
+    "salted egg", 
+    "dim sum", 
+    "nasi lemak",  
+    "fried chicken", 
+    "fried rice", 
+    "japanese food", 
+    "thai food", 
+    "chicken rice", 
+    "italian restaurant", 
+    "western food",
+    "nasi kandar", 
+    "char siew"
+  )) |> 
+  ggplot(aes(x = beta, 
+             y = fct_rev(topic))) + 
+  geom_col(aes(fill = topic)) + 
+  scale_fill_manual(
+    values = c("1. Recommended" = "#8ac926", 
+               "2. Everything else" = "#ff595e")
+  ) +
+  facet_wrap(~ term) + 
+  guides(fill = "none") + 
+  theme(strip.background = element_rect(fill = "black"), 
+        axis.text.x = element_text(size = 6)) + 
+  labs(title = "Per-topic probabilities of foods and cuisines", 
+       subtitle = "Google reviews in the Klang Valley", 
+       y = "")
+
+ggsave(here("plots", "google_foods_lda.png"), 
+       width = 8, height = 5, units = "in", dpi = 300)
+```
+
+<br>
+
+The next plot below shows some of the most common general descriptors (not specific to food) of restaurants. 
+
+"Friendly staff" and "nice food", more often than not, are complimentary terms, but do by no means guarantee a positive review or a recommendation. Likewise, having a "nice environment" is important, but nowhere as important as having "excellent food" or "excellent service". 
+
+Bringing up "food quality" is more likely a pejorative than it is not. If service is very important to you, the terms "excellent service" and "friendly staff" are good distinguishers in Google reviews. Unfortunately, a lot of people to whom service is very important are unable to acknowledge this fact about themselves. 
+
+<br>
+
+```{r general-descriptors-lda, fig.height = 5.5}
+google_bigrams_topics |> 
+   # Remember topic 1 is recommended 
+  mutate(topic = ifelse(
+    topic == 1, "2. Everything else", "1. Recommended"
+  )) |> 
+  filter(term %in% c(
+    "reasonable price",
+    "highly recommend", 
+    "highly recommended", 
+    "amazing food", 
+    "nice environment", 
+    "food quality", 
+    "nice food",  
+    "bit pricey", 
+    "excellent service", 
+    "decent food", 
+    "friendly staff", 
+    "excellent food"
+  )) |> 
+  ggplot(aes(x = beta, 
+             y = fct_rev(topic))) + 
+  geom_col(aes(fill = topic)) + 
+  scale_fill_manual(
+    values = c("1. Recommended" = "#8ac926", 
+               "2. Everything else" = "#ff595e")
+  ) +
+  facet_wrap(~ term) + 
+  guides(fill = "none") + 
+  theme(strip.background = element_rect(fill = "black"), 
+        axis.text.x = element_text(size = 6)) +
+  labs(y = "", 
+       title = "Per-topic probabilities of general restaurant descriptors")
+
+ggsave(here("plots", "google_general_descriptions_lda.png"), 
+       width = 8, height = 5, units = "in", dpi = 300)
+```
+
+
+<br>
+
+However, this isn't all that applicable to real life, since you can't search all reviews across all restaurants for keywords. Google Maps does not work the same way Google Search does (at least before it became useless). You can only search for keywords within the reviews of a single restaurant.
+
+This is another point in favour of online reviews just being a marketing ploy. Not to say that marketing ploys cannot be informative, just that their information is compromised. 
+
+There is, however, one keyword that does work. 
+
+
+<br><br><br>
+
+## "Highly recommended restaurant" (sic)
+
+<br>
+
+[![What directory mode looks like](./plots/directory_mode.png)](https://raw.githubusercontent.com/aimdata-labs/google_trip_reviews_kl_site/main/plots/directory_mode.png)
+
+<br>
+
+Type in "highly recommended restaurant" (sic) into Google Maps (or "recommended restaurant" on iOS) and see what you get. I get a list of some pretty good restaurants, with no photos. I don't agree with every entry, this "directory" mode is probably the best (but still flawed) performance I've seen from Google Maps in a long time. 
+
+Now, this may seem like we've somehow gamed the system, but to bring us back down to Earth, this list of highly recommended restaurants is actually still part of the play, according to Gemini (Google Maps Support has no real answers on this topic): 
+
+>When you type "highly recommend restaurant" into the search bar, Google Maps interprets those words as keywords rather than a command. Instead of looking for a specific badge, the app uses its algoritm to build a list based on several "trust signals."
+
+>1. Keyword matching (SEO) [...] "This place is highly recommended" [...]
+>2. High "Prominence" Scores. Google defines "Prominence" as how well-known or important a business is. When you ass "highly recommended" to your search, the algorithm prioritizes restaurants with: high volume of 4.5+ star ratings. Mentions on "Best Of" lists [...]. Heavy foot traffic (Google tracks how many people acturally visit the location). 
+> 3. The "Top Rated" Filter. By using that specific phrase, you are essentially triggering Google's built-in Rating Filter. Google will automatically filter out businesses with low ratings (usually anything below a 4.0) [...].
+>4. Machine Learning & "Your Match"[...]
+
+They have also included a "Review Snippet" so you can tell why a particular restaurant made it to this list. Also note from these screenshots that the actual rating is not that important: restaurants are in the range of 4.0 to 5.0, but that's about it, as if Google also knows that the mean rating is not a particularly useful metric. 
+
+Conversely, when you type in "highly recommended restaurants" or just "highly recommended", 
+
+>the list looks different—often featuring large, swipeable photos—because Google switches from a standard "directory" mode to "Discovery Mode." Google knows that when you use words like "highly recommended," you aren't just looking for an address; you’re looking for an experience. 
+
+When not in "directory" mode, the factors that Google Maps takes into account are not desirable (at least by me):
+
+>1. Visual "proof" of recommendation. Google's AI specifically pulls photos it identifies as "high quality"
+>2. The "Discover Through Photos" feature. [...] When you use subjective search terms (like *highly recommended*, *beautiful*, *cozy*), Google assumes yuou want to browse visually. 
+>3. AI Dish Matching
+>4. High Engagement Signals. [...] Google rewards businesses that have high engagement. If a restaurant has 1,000 photos uploaded by customers, Google has a huge library to make the search result look more attractive and "trustworthy" to you. 
+
+This is likely why searching for "best restaurant" yields such poor results. You're probably getting results that are more easily manipulated and influenced i.e. upload a photo for a free ice cream. 
+
+For reference, Google Maps's base algorithm (which is used when you type in "restaurants in area X") relies on: 
+
+>1. Distance
+>2. Relevance. [...] Category matching, [...] Menu and Attributes, [...] Open Now
+>3. Prominence. [...] Review velocity [...] how ofren peole are leaving reviews. [...] Web presence [...]. SEO strength: the ranking of the restaurant's actual website also matters. 
+>4. Personalisation
+
+But back to "directory" mode: even though you get more satisfactory results, bear in mind that the Google rating has already been taken into account twice: ratings are part of how Google calculates "Prominence" and the algorithm also applies a rating filter. 
+
+That it does not solely act like a keyword is likely to prevent more manipulation and SEO shenanigans. So far, I've only been able to trigger **Directory mode** with this one phrase. What else can trigger **Directory mode** on Google Maps? In these trying times, could some variation of "reasonable price restaurant" work?
+
+
+
+<br><br><br>
+
+## Conclusions part two
+
+Online reviews are part of a highly-gamified ecosystem. Standard searches will leave you at the mercy of content pushed by SEO, influencers and black-box algorithms. 
+
+Whilst there are ways around this, like directory mode, ultimately, the system fundamentally does not seem to be geared towards the needs of customers (especially not if you need tips and tricks just to get passable performance). Customisation occurs mostly on the back-end: there is no way to tell Google what ypu consider relevant to you. Instead, they glean this from your online footprint, believing you will unconsciously betray your wants and needs to them.
+
+Therein lies the rub. Just because you know my sex, my income, whether or not I'm pregnant, and can put me into one of their numerous categories and clusters does not mean you know me as a person, or even as a customer. You could argue that this widespread data theft might not lead to the best results for one person, but that it is used to produce apps and algorithms that are able to serve the majority well. 
+
+But I do not think Google Reviews serve the majority well. This has to do with the fact that online reviews are not solely about food. It is an "experience" that must be upsold and marketed to you. In trying to be Instagram, they have forgotten how to be a map, a directory. The wanton privileging of photos and influencer reels is not helpful when I just want a good meal. 
+
+So, are online reviews useful? Eh. 2/5. 
+
+
+
+
+
+<br><br><br>
+
+
+
+## Appendices
+
+Even within the much more verbose reviews on Trip Advisor, we still see that the language used is still very limited, irrespective of rating. 
+
+<br>
+
+```{r fig.height=7}
+trip_rating_bigrams |> 
+  filter(bigram %out% c("kuala lumpur")) |> 
+  mutate(rating = as.factor(rating)) |> 
+  arrange(desc(n)) |> 
+  group_by(rating) |> 
+  slice(1:15) |> 
+  ungroup() |> 
+  ggplot(aes(x = n, y = reorder_within(bigram, n, rating))) + 
+  geom_col(aes(fill = rating)) + 
+  scale_fill_manual(values = c(
+    `1` = "#e76f51", 
+    `2` = "#f4a261", 
+    `3` = "#e9c46a", 
+    `4` = "#2a9d8f", 
+    `5` = "#264653"
+  )) +
+  facet_wrap(~ rating, scales = "free") +
+  scale_y_reordered() + 
+  guides(fill = "none") + 
+  theme(strip.background = element_rect(fill = "black")) + 
+  labs(x = "Count", 
+       y = "", 
+       title = "Most common bigrams by rating, Trip Advisor reviews")
+  
+```
+<br>
+
+Just as an interesting point, when we look at one-star Trip Advisor reviews for Casual Western restaurants, we see that the words "hot" and "cold" are quite prominent. 
+
+I believe this has to do with underprepared and/or improperly microwaved food. Microwaved food, often bought from a food service or brought from a central kitchen, is one of the sad curses of modern dining. Waves of consolidation up and down the restaurant supply chain have left all hawkers in Singapore with one choice of yellow mee or only one type of bee hoon. In America, US Foods and Sysco have completely sewn up the supply chain, leading to all jalapeño poppers and mozzarella sticks coast-to-coast to be the exact same. 
+
+Whilst that level of corporate consolidation has not yet occurred in Malaysia, the process is nevertheless underway. This is something we must guard against and prevent, as homogeneity isn't even prized in prison meals. 
+
+<br>
+
+[![Click image for full size](./plots/trip_casual_western_1_star_network_graph.png)](https://raw.githubusercontent.com/aimdata-labs/google_trip_reviews_kl_site/main/plots/trip_casual_western_1_star_network_graph.png)
+
+```{r eval=FALSE}
+trip_casual_western_1_star_network <- trip_kl_cuisine |> 
+  mutate(review_id = row_number()) |> 
+  filter(cuisine == "Casual Western" & rating == 1) |> 
+  unnest_tokens(word, review) |> 
+  anti_join(stop_words) |> 
+  filter(str_detect(word, "[a-z]")) |> 
+  add_count(word) |> 
+  filter(n > 20) |> 
+  pairwise_cor(word, review_id, sort = TRUE) |> 
+  filter(correlation >= .18) |> 
+  left_join(
+    trip_kl_cuisine |> 
+      mutate(review_id = row_number()) |> 
+      filter(cuisine == "Casual Western" & rating == 1) |> 
+      unnest_tokens(word, review) |> 
+      anti_join(stop_words) |> 
+      filter(str_detect(word, "[a-z]")) |> 
+      add_count(word) |> 
+      filter(n > 20) |> 
+      pairwise_count(word, review_id, sort = TRUE), 
+    by = c("item1", "item2")
+  ) |> 
+  igraph::graph_from_data_frame() |> 
+  ggraph(layout = "fr") + 
+  geom_edge_link(aes(alpha = correlation, edge_width = n), colour = "#457b9d", check_overlap = TRUE) +
+  scale_edge_width_continuous(range = c(.1, 4), trans = "log10") +
+  scale_alpha_continuous(range = c(0.01, 0.08)) +
+  geom_node_point(colour = "#457b9d", alpha = 0.2, size = .5) +
+  geom_node_text(aes(label = ifelse(name %in% 
+                                        c("wait", "hot", "cold", 
+                                          "service", "experience", "food", 
+                                          "serve"),
+                                    name,
+                                      "")), 
+                 size = 3.1, 
+                 alpha = .9, 
+                 colour = "#00afb9", 
+                 fontface = "bold") +
+  geom_node_text(aes(label = name), size = 3.1, alpha = .4, 
+                 colour = "#caf0f8") + 
+  theme(legend.position = "none", 
+        plot.caption = element_text(hjust = .5, colour = "#219ebc"), 
+        panel.background = element_rect(fill = "#03071e"), 
+        plot.background = element_rect(fill = "#1b263b"), 
+        plot.title = element_text(colour = "#219ebc"), 
+        plot.subtitle = element_text(colour = "#219ebc", size = 10)) + 
+  labs(title = "Network graph of One-star Casual Western Restaurant Trip Advisor Review Descriptions", 
+       subtitle = "Line thickness indicates number of events involving those words, line transparency indicates the correlation between words. Key topics highlighted.", 
+       caption = "Source: TripAdvisor; Ng Choon Khon")
+
+ggsave(here("plots", "trip_casual_western_1_star_network_graph.png"), 
+       width = 10, height = 6.5, units = "in", dpi = 300)
+```
+
+<br>
+
+"Cold" shows up again under one-star Google reviews of Casual Western restaurants, indicating poor attention to detail and/or rushed food preparation. Though it doesn't necessarily point towards microwaved foods. 
+
+As a side note (in an appendix), there is a way to microwave food well -- apparently using the defrost setting achieves the most even cooking. 
+
+<br>
+
+[![Click image for full size](./plots/google_casual_western_1_star_network_graph.png)](https://raw.githubusercontent.com/aimdata-labs/google_trip_reviews_kl_site/main/plots/google_casual_western_1_star_network_graph.png)
+
+```{r eval=FALSE}
+google_casual_western_1_star_network <- google_kl_cuisine |> 
+  mutate(review_id = row_number()) |> 
+  filter(cuisine == "Casual Western" & rating == 1) |> 
+  unnest_tokens(word, review) |> 
+  anti_join(stop_words) |> 
+  filter(str_detect(word, "[a-z]")) |> 
+  add_count(word) |> 
+  filter(n > 15) |> 
+  pairwise_cor(word, review_id, sort = TRUE) |> 
+  filter(correlation >= .12) |> 
+  left_join(
+    google_kl_cuisine |> 
+      mutate(review_id = row_number()) |> 
+      filter(cuisine == "Casual Western" & rating == 1) |> 
+      unnest_tokens(word, review) |> 
+      anti_join(stop_words) |> 
+      filter(str_detect(word, "[a-z]")) |> 
+      add_count(word) |> 
+      filter(n > 15) |> 
+      pairwise_count(word, review_id, sort = TRUE), 
+    by = c("item1", "item2")
+  ) |> 
+  igraph::graph_from_data_frame() |> 
+  ggraph(layout = "fr") + 
+  geom_edge_link(aes(alpha = correlation, edge_width = n), colour = "#457b9d", check_overlap = TRUE) +
+  scale_edge_width_continuous(range = c(.1, 4), trans = "log10") +
+  scale_alpha_continuous(range = c(0.01, 0.08)) +
+  geom_node_point(colour = "#457b9d", alpha = 0.2, size = .5) +
+  geom_node_text(aes(label = ifelse(name %in% 
+                                        c("wait", "hot", "cold", 
+                                          "service", "quality", "rude",
+                                          "serve", "taste", "price"),
+                                    name,
+                                      "")), 
+                 size = 3.1, 
+                 alpha = .9, 
+                 colour = "#00afb9", 
+                 fontface = "bold") +
+  geom_node_text(aes(label = name), size = 3.1, alpha = .4, 
+                 colour = "#caf0f8") + 
+  theme(legend.position = "none", 
+        plot.caption = element_text(hjust = .5, colour = "#219ebc"), 
+        panel.background = element_rect(fill = "#03071e"), 
+        plot.background = element_rect(fill = "#1b263b"), 
+        plot.title = element_text(colour = "#219ebc"), 
+        plot.subtitle = element_text(colour = "#219ebc", size = 10)) + 
+  labs(title = "Network graph of One-star Casual Western Restaurant Google Review Descriptions", 
+       subtitle = "Line thickness indicates number of events involving those words, line transparency indicates the correlation between words. Key topics highlighted.", 
+       caption = "Source: maps.google.com; Ng Choon Khon")
+
+ggsave(here("plots", "google_casual_western_1_star_network_graph.png"), 
+       width = 10, height = 6.5, units = "in", dpi = 300)
+```
+
+<br>
+
+In contrast, when we look at five-star reviews of Casual Western restaurants on Trip Advisor, we see a slew of foods which would suffer if the preparation were lacking: steaks, ribs, and even sausages would suffer from a microwave. 
+
+<br>
+
+[![Click image for full size](./plots/google_casual_western_1_star_network_graph.png)](https://raw.githubusercontent.com/aimdata-labs/google_trip_reviews_kl_site/main/plots/google_casual_western_1_star_network_graph.png)
+
+```{r eval=FALSE}
+trip_casual_western_5_star_network <- trip_kl_cuisine |> 
+  mutate(review_id = row_number()) |> 
+  filter(cuisine == "Casual Western" & rating == 5) |> 
+  unnest_tokens(word, review) |> 
+  anti_join(stop_words) |> 
+  filter(str_detect(word, "[a-z]")) |> 
+  add_count(word) |> 
+  filter(n > 20) |> 
+  pairwise_cor(word, review_id, sort = TRUE) |> 
+  filter(correlation >= .18) |> 
+  left_join(
+    trip_kl_cuisine |> 
+      mutate(review_id = row_number()) |> 
+      filter(cuisine == "Casual Western" & rating == 5) |> 
+      unnest_tokens(word, review) |> 
+      anti_join(stop_words) |> 
+      filter(str_detect(word, "[a-z]")) |> 
+      add_count(word) |> 
+      filter(n > 20) |> 
+      pairwise_count(word, review_id, sort = TRUE), 
+    by = c("item1", "item2")
+  ) |> 
+  igraph::graph_from_data_frame() |> 
+  ggraph(layout = "fr") + 
+  geom_edge_link(aes(alpha = correlation, edge_width = n), colour = "#457b9d", check_overlap = TRUE) +
+  scale_edge_width_continuous(range = c(.1, 4), trans = "log10") +
+  scale_alpha_continuous(range = c(0.01, 0.08)) +
+  geom_node_point(colour = "#457b9d", alpha = 0.2, size = .5) +
+  geom_node_text(aes(label = ifelse(name %in% 
+                                        c("friendly", "ribs", "steak", 
+                                          "sausage", "highly", "beer"),
+                                    name,
+                                      "")), 
+                 size = 3.1, 
+                 alpha = .9, 
+                 colour = "#00afb9", 
+                 fontface = "bold") +
+  geom_node_text(aes(label = name), size = 3.1, alpha = .4, 
+                 colour = "#caf0f8") + 
+  theme(legend.position = "none", 
+        plot.caption = element_text(hjust = .5, colour = "#219ebc"), 
+        panel.background = element_rect(fill = "#03071e"), 
+        plot.background = element_rect(fill = "#1b263b"), 
+        plot.title = element_text(colour = "#219ebc"), 
+        plot.subtitle = element_text(colour = "#219ebc", size = 10)) + 
+  labs(title = "Network graph of One-star Casual Western Restaurant Trip Advisor Review Descriptions", 
+       subtitle = "Line thickness indicates number of events involving those words, line transparency indicates the correlation between words. Key topics highlighted.", 
+       caption = "Source: TripAdvisor; Ng Choon Khon")
+
+ggsave(here("plots", "trip_casual_western_5_star_network_graph.png"), 
+       width = 10, height = 6.5, units = "in", dpi = 300)
+    
+```
+
+
+
+
+
+
+

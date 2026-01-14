@@ -358,7 +358,7 @@ google_bigrams_topics |>
   ) +
   facet_wrap(~ topic, scales = "free_y") + 
   scale_y_reordered() + 
-  labs(title = "20 most-probable bigram per topic", 
+  labs(title = "20 most-probable bigrams per topic", 
        subtitle = "From Google reviews of restaurants in the Klang Valley.\nOnly shows bigrams that occur more than 20 times in the dataset.", 
        y = "", 
        x = "Per-topic probability (beta)") + 
@@ -366,6 +366,8 @@ google_bigrams_topics |>
   theme(strip.background = element_rect(fill = "black"), 
         strip.text = element_text(size = 10, face = "bold"))
 
+ggsave(here("plots", "google_lda.png"), 
+       width = 7, height = 4, units = "in", dpi = 300)
 ```
 
 
@@ -377,7 +379,7 @@ Restaurants seem to have the worst performance with chicken rice, fried rice, ch
 
 Perhaps reviewers are less generous with foods they are familiar with. I know I am: I've had extremely good char siew and roast pork (that can be easily and readily accessed) and can be uncharitable and judgemental when they are done poorly. 
 
-Given the low percentage of reviews that use Malay that we mentioned in the previous part -- many of the most common foods here are not halal at all. This underlines that the demographics of Google reviewers (who are already much more likely to be locals than Trip Advisor reviewers) are skewed heavily towards minorities. 
+Given the low percentage of reviews that use Malay that we mentioned in the previous part, many of the most common foods here are not halal at all. This underlines that the demographics of Google reviewers (who are already much more likely to be locals than Trip Advisor reviewers) are skewed heavily towards minorities. 
 
 <br>
 
@@ -417,10 +419,13 @@ google_bigrams_topics |>
   facet_wrap(~ term) + 
   guides(fill = "none") + 
   theme(strip.background = element_rect(fill = "black"), 
-        axis.text.x = element_text(size = 7)) + 
+        axis.text.x = element_text(size = 6)) + 
   labs(title = "Per-topic probabilities of foods and cuisines", 
        subtitle = "Google reviews in the Klang Valley", 
        y = "")
+
+ggsave(here("plots", "google_foods_lda.png"), 
+       width = 8, height = 5, units = "in", dpi = 300)
 ```
 
 <br>
@@ -462,9 +467,13 @@ google_bigrams_topics |>
   ) +
   facet_wrap(~ term) + 
   guides(fill = "none") + 
-  theme(strip.background = element_rect(fill = "black")) +
+  theme(strip.background = element_rect(fill = "black"), 
+        axis.text.x = element_text(size = 6)) +
   labs(y = "", 
        title = "Per-topic probabilities of general restaurant descriptors")
+
+ggsave(here("plots", "google_general_descriptions_lda.png"), 
+       width = 8, height = 5, units = "in", dpi = 300)
 ```
 
 
